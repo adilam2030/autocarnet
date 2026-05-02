@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "980667687522",
+    "project_id": "autocarnet-a26b6",
+    "storage_bucket": "autocarnet-a26b6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:980667687522:android:2c5fd72ddc36a12576a73b",
+        "android_client_info": {
+          "package_name": "com.autocarnet.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "980667687522-19mnh82nr0td63gsqnfppv32ci4fud4k.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyABGxzA2pAQLvKFpjLZklzkiagVDjMKdH0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "980667687522-19mnh82nr0td63gsqnfppv32ci4fud4k.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
