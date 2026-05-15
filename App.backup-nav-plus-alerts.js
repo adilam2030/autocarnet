@@ -3067,6 +3067,25 @@ const MainTabs=()=>(
   <Tab.Navigator screenOptions={{headerShown:false,tabBarStyle:{paddingBottom:30,paddingTop:8,height:92,backgroundColor:'#fff',borderTopWidth:1,borderTopColor:'#f3f4f6'},tabBarActiveTintColor:C.primary,tabBarInactiveTintColor:C.textLight,tabBarLabelStyle:{fontSize:10,fontWeight:'700',marginTop:-4,marginBottom:14}}}>
     <Tab.Screen name="Dashboard" component={DashboardScreen} options={{tabBarLabel:'Véhicules',tabBarIcon:({focused})=><Text style={{fontSize:focused?22:20,opacity:focused?1:0.6}}>🚗</Text>}}/>
     <Tab.Screen name="Notifications" component={NotificationsScreen} options={{tabBarLabel:'Alertes',tabBarIcon:({focused})=><Text style={{fontSize:focused?22:20,opacity:focused?1:0.6}}>🔔</Text>}}/>
+    <Tab.Screen name="QuickAddOperation" component={QuickAddOperationScreen} options={{
+      tabBarLabel:'Ajouter',
+      tabBarIcon:()=>(
+        <View style={{
+          width:58,height:58,borderRadius:29,
+          backgroundColor:C.primary,
+          alignItems:'center',
+          justifyContent:'center',
+          marginTop:-22,
+          shadowColor:'#000',
+          shadowOpacity:0.22,
+          shadowRadius:8,
+          shadowOffset:{width:0,height:4},
+          elevation:8
+        }}>
+          <Text style={{fontSize:34,color:'#fff',fontWeight:'300',marginTop:-2}}>+</Text>
+        </View>
+      )
+    }}/>
     <Tab.Screen name="Depenses" component={DepensesScreen} options={{tabBarLabel:'Dépenses',tabBarIcon:({focused})=><Text style={{fontSize:focused?22:20,opacity:focused?1:0.6}}>💰</Text>}}/>
     <Tab.Screen name="Argus" component={AssistantScreen} options={{tabBarLabel:'Argus',tabBarIcon:({focused})=><Text style={{fontSize:focused?22:20,opacity:focused?1:0.6}}>📈</Text>}}/>
     

@@ -681,35 +681,6 @@ const Input=({label,required,...props})=><View style={{marginBottom:16}}>{label&
 const LOCAL_EMAIL_KEY = 'local_auth_email';
 const LOCAL_NAME_KEY = 'local_auth_name';
 const LOCAL_PIN_KEY = 'local_auth_pin';
-const LOCAL_EMAIL_VERIFIED_KEY = 'local_email_verified';
-const SEND_OTP_URL = 'https://tgwnwljbdezkeksiyhij.supabase.co/functions/v1/send-otp';
-const VERIFY_OTP_URL = 'https://tgwnwljbdezkeksiyhij.supabase.co/functions/v1/verify-otp';
-const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
-
-
-const sendEmailOtp=async(email)=>{
-  const r=await fetch(SEND_OTP_URL,{
-    method:'POST',
-    headers:{
-      'Content-Type':'application/json',
-      'Authorization':`Bearer ${SUPABASE_ANON_KEY}`
-    },
-    body:JSON.stringify({email})
-  });
-  return await r.json();
-};
-
-const verifyEmailOtp=async(email,code)=>{
-  const r=await fetch(VERIFY_OTP_URL,{
-    method:'POST',
-    headers:{
-      'Content-Type':'application/json',
-      'Authorization':`Bearer ${SUPABASE_ANON_KEY}`
-    },
-    body:JSON.stringify({email,code})
-  });
-  return await r.json();
-};
 
 const LoginScreen=({navigation})=>{
   const[mode,setMode]=useState('loading');
@@ -717,9 +688,6 @@ const LoginScreen=({navigation})=>{
   const[fullName,setFullName]=useState('');
   const[pin,setPin]=useState('');
   const[pinConfirm,setPinConfirm]=useState('');
-  const[otp,setOtp]=useState('');
-  const[otpVerified,setOtpVerified]=useState(false);
-  const[loading,setLoading]=useState(false);
   const[error,setError]=useState('');
 
   useEffect(()=>{
@@ -727,9 +695,7 @@ const LoginScreen=({navigation})=>{
       const savedEmail=await AsyncStorage.getItem(LOCAL_EMAIL_KEY);
       const savedName=await AsyncStorage.getItem(LOCAL_NAME_KEY);
       const savedPin=await AsyncStorage.getItem(LOCAL_PIN_KEY);
-      const verified=await AsyncStorage.getItem(LOCAL_EMAIL_VERIFIED_KEY);
-
-      if(savedEmail&&savedPin&&verified==='true'){
+      if(savedEmail&&savedPin){
         setEmail(savedEmail);
         setFullName(savedName||savedEmail.split('@')[0]);
         setMode('login');
@@ -740,72 +706,17 @@ const LoginScreen=({navigation})=>{
     load();
   },[]);
 
-  const cleanEmail=()=>email.trim().toLowerCase();
-
-  const requestOtp=async()=>{
-    const ce=cleanEmail();
-    const cn=fullName.trim();
-
-    if(!cn){setError('Saisissez votre nom et prénom.');return;}
-    if(!ce||!ce.includes('@')){setError('Saisissez une adresse mail valide.');return;}
-
-    setLoading(true);
-    setError('');
-
-    try{
-      const res=await sendEmailOtp(ce);
-      if(res.success){
-        setEmail(ce);
-        setMode('otp');
-        Alert.alert('Code envoyé','Vérifiez votre boîte mail puis saisissez le code reçu.');
-      }else{
-        setError(res.error||'Impossible d’envoyer le code.');
-      }
-    }catch(e){
-      setError('Erreur réseau. Réessayez.');
-    }finally{
-      setLoading(false);
-    }
-  };
-
-  const verifyOtp=async()=>{
-    const ce=cleanEmail();
-    const code=otp.replace(/\D/g,'');
-
-    if(code.length!==6){setError('Saisissez le code à 6 chiffres.');return;}
-
-    setLoading(true);
-    setError('');
-
-    try{
-      const res=await verifyEmailOtp(ce,code);
-      if(res.success&&res.verified){
-        setOtpVerified(true);
-        setMode('createPin');
-      }else{
-        setError(res.error||'Code invalide ou expiré.');
-      }
-    }catch(e){
-      setError('Erreur réseau. Réessayez.');
-    }finally{
-      setLoading(false);
-    }
-  };
-
-  const createPin=async()=>{
-    const ce=cleanEmail();
-    const cn=fullName.trim();
-
-    if(!otpVerified){setError('Email non vérifié.');return;}
+  const register=async()=>{
+    const cleanEmail=email.trim().toLowerCase();
+    const cleanName=fullName.trim();
+    if(!cleanName){setError('Saisissez votre nom et prénom.');return;}
+    if(!cleanEmail||!cleanEmail.includes('@')){setError('Saisissez une adresse mail valide.');return;}
     if(!/^\d{4,6}$/.test(pin)){setError('Le code PIN doit contenir 4 à 6 chiffres.');return;}
     if(pin!==pinConfirm){setError('Les deux codes PIN ne sont pas identiques.');return;}
-
-    await AsyncStorage.setItem(LOCAL_EMAIL_KEY,ce);
-    await AsyncStorage.setItem(LOCAL_NAME_KEY,cn);
+    await AsyncStorage.setItem(LOCAL_EMAIL_KEY,cleanEmail);
+    await AsyncStorage.setItem(LOCAL_NAME_KEY,cleanName);
     await AsyncStorage.setItem(LOCAL_PIN_KEY,pin);
-    await AsyncStorage.setItem(LOCAL_EMAIL_VERIFIED_KEY,'true');
-    await AsyncStorage.setItem('userName',cn);
-
+    await AsyncStorage.setItem('userName',cleanName);
     navigation.replace('Main');
   };
 
@@ -822,105 +733,22 @@ const LoginScreen=({navigation})=>{
   const resetLocalAccess=()=>{
     Alert.alert(
       'Réinitialiser l’accès',
-      'Pour protéger votre compte, un code sera envoyé par email avant de créer un nouveau PIN.',
+      'Cette action supprime uniquement l’identifiant et le PIN local. Les véhicules restent enregistrés sur ce téléphone.',
       [
         {text:'Annuler'},
-        {text:'Continuer',style:'destructive',onPress:async()=>{
-          setPin('');
-          setPinConfirm('');
-          setOtp('');
-          setOtpVerified(false);
-          setError('');
-          setMode('resetOtpRequest');
+        {text:'Réinitialiser',style:'destructive',onPress:async()=>{
+          await AsyncStorage.multiRemove([LOCAL_EMAIL_KEY,LOCAL_NAME_KEY,LOCAL_PIN_KEY,'userName']);
+          setEmail('');setFullName('');setPin('');setPinConfirm('');setError('');setMode('register');
         }}
       ]
     );
-  };
-
-  const requestResetOtp=async()=>{
-    const ce=cleanEmail();
-    if(!ce||!ce.includes('@')){setError('Adresse mail invalide.');return;}
-
-    setLoading(true);
-    setError('');
-
-    try{
-      const res=await sendEmailOtp(ce);
-      if(res.success){
-        setMode('resetOtpVerify');
-        Alert.alert('Code envoyé','Saisissez le code reçu par email.');
-      }else{
-        setError(res.error||'Impossible d’envoyer le code.');
-      }
-    }catch{
-      setError('Erreur réseau. Réessayez.');
-    }finally{
-      setLoading(false);
-    }
-  };
-
-  const verifyResetOtp=async()=>{
-    const ce=cleanEmail();
-    const code=otp.replace(/\D/g,'');
-
-    if(code.length!==6){setError('Saisissez le code à 6 chiffres.');return;}
-
-    setLoading(true);
-    setError('');
-
-    try{
-      const res=await verifyEmailOtp(ce,code);
-      if(res.success&&res.verified){
-        setOtpVerified(true);
-        setMode('resetPin');
-      }else{
-        setError(res.error||'Code invalide ou expiré.');
-      }
-    }catch{
-      setError('Erreur réseau. Réessayez.');
-    }finally{
-      setLoading(false);
-    }
-  };
-
-  const saveResetPin=async()=>{
-    if(!otpVerified){setError('Email non vérifié.');return;}
-    if(!/^\d{4,6}$/.test(pin)){setError('Le code PIN doit contenir 4 à 6 chiffres.');return;}
-    if(pin!==pinConfirm){setError('Les deux codes PIN ne sont pas identiques.');return;}
-
-    await AsyncStorage.setItem(LOCAL_PIN_KEY,pin);
-    await AsyncStorage.setItem(LOCAL_EMAIL_VERIFIED_KEY,'true');
-
-    Alert.alert('PIN réinitialisé','Votre nouveau code PIN est enregistré.');
-    setPin('');
-    setPinConfirm('');
-    setOtp('');
-    setOtpVerified(false);
-    setMode('login');
   };
 
   if(mode==='loading'){
     return <SafeAreaView style={{flex:1,backgroundColor:C.primary,alignItems:'center',justifyContent:'center'}}><ActivityIndicator color="#fff"/></SafeAreaView>;
   }
 
-  const title=
-    mode==='login'?'Bienvenue':
-    mode==='otp'?'Vérification email':
-    mode==='createPin'?'Créer votre PIN':
-    mode==='resetOtpRequest'?'Réinitialisation':
-    mode==='resetOtpVerify'?'Vérifier le code':
-    mode==='resetPin'?'Nouveau PIN':
-    'Créer votre accès';
-
-  const subtitle=
-    mode==='login'?'Votre profil est mémorisé. Saisissez uniquement votre code PIN.':
-    mode==='otp'?'Saisissez le code reçu par email.':
-    mode==='createPin'?'Email vérifié. Créez maintenant votre code PIN.':
-    mode==='resetOtpRequest'?'Un code sera envoyé à votre email pour autoriser la réinitialisation.':
-    mode==='resetOtpVerify'?'Saisissez le code reçu par email.':
-    mode==='resetPin'?'Définissez votre nouveau code PIN.':
-    'Saisissez votre nom, votre email, puis vérifiez votre adresse.';
-
+  const isRegister=mode==='register';
   return(
     <SafeAreaView style={{flex:1,backgroundColor:C.primary,paddingTop:SAFE_TOP,paddingBottom:SAFE_BOTTOM}}>
       <StatusBar barStyle="light-content" backgroundColor={C.primary}/>
@@ -930,80 +758,37 @@ const LoginScreen=({navigation})=>{
             <Text style={{fontSize:34}}>🚗</Text>
           </View>
           <Text style={{fontSize:28,fontWeight:'800',color:'#fff',letterSpacing:-1}}>AutoCarnet</Text>
-          <Text style={{fontSize:14,color:'rgba(255,255,255,0.75)',marginTop:4}}>Connexion simple et sécurisée</Text>
+          <Text style={{fontSize:14,color:'rgba(255,255,255,0.75)',marginTop:4}}>Connexion simple et rapide</Text>
         </View>
 
         <View style={{backgroundColor:'#fff',borderRadius:22,padding:18}}>
-          <Text style={{fontSize:21,fontWeight:'800',color:C.text,marginBottom:4}}>{title}</Text>
-          <Text style={{fontSize:13,color:C.textLight,marginBottom:18,lineHeight:20}}>{subtitle}</Text>
+          <Text style={{fontSize:21,fontWeight:'800',color:C.text,marginBottom:4}}>{isRegister?'Créer votre accès':'Bienvenue'}</Text>
+          <Text style={{fontSize:13,color:C.textLight,marginBottom:22,lineHeight:20}}>
+            {isRegister?'Saisissez votre nom, votre adresse mail et créez un code PIN.':'Votre profil est mémorisé. Saisissez uniquement votre code PIN.'}
+          </Text>
 
-          {error?<View style={{backgroundColor:C.dangerLight,borderRadius:10,padding:10,marginBottom:14}}>
-            <Text style={{color:C.danger,fontSize:13,fontWeight:'600'}}>{error}</Text>
-          </View>:null}
+          {error?<View style={{backgroundColor:C.dangerLight,borderRadius:10,padding:10,marginBottom:14}}><Text style={{color:C.danger,fontSize:13,fontWeight:'600'}}>{error}</Text></View>:null}
 
-          {mode==='register'&&<>
-            <Input label="Nom et prénom" value={fullName} onChangeText={v=>{setFullName(v);setError('');}} placeholder="Ex: Lamiaa El..." />
-            <Input label="Adresse mail" value={email} autoCapitalize="none" keyboardType="email-address" onChangeText={v=>{setEmail(v);setError('');}} placeholder="exemple@mail.com"/>
-            <Btn label="Envoyer le code" onPress={requestOtp} loading={loading}/>
-          </>}
-
-          {mode==='otp'&&<>
-            <View style={{backgroundColor:C.primaryLight,borderRadius:14,padding:12,marginBottom:12}}>
-              <Text style={{fontSize:12,color:C.textLight}}>Code envoyé à</Text>
-              <Text style={{fontSize:15,fontWeight:'900',color:C.primary,marginTop:3}}>{email}</Text>
-            </View>
-            <Input label="Code reçu par email" value={otp} onChangeText={v=>{setOtp(v.replace(/\D/g,'').slice(0,6));setError('');}} keyboardType="number-pad" placeholder="6 chiffres"/>
-            <Btn label="Vérifier le code" onPress={verifyOtp} loading={loading}/>
-            <TouchableOpacity onPress={requestOtp} style={{alignItems:'center',marginTop:14}}>
-              <Text style={{fontSize:12,color:C.primary,fontWeight:'800'}}>Renvoyer le code</Text>
-            </TouchableOpacity>
-          </>}
-
-          {mode==='createPin'&&<>
-            <Input label="Code PIN" value={pin} onChangeText={v=>{setPin(v.replace(/\D/g,'').slice(0,6));setError('');}} keyboardType="number-pad" secureTextEntry placeholder="4 à 6 chiffres"/>
-            <Input label="Confirmer le code PIN" value={pinConfirm} onChangeText={v=>{setPinConfirm(v.replace(/\D/g,'').slice(0,6));setError('');}} keyboardType="number-pad" secureTextEntry placeholder="Répéter le PIN"/>
-            <Btn label="Créer mon accès" onPress={createPin}/>
-          </>}
-
-          {mode==='login'&&<>
+          {isRegister?(
+            <>
+              <Input label="Nom et prénom" value={fullName} onChangeText={v=>{setFullName(v);setError('');}} placeholder="Ex: Lamiaa El..." />
+              <Input label="Adresse mail" value={email} autoCapitalize="none" keyboardType="email-address" onChangeText={v=>{setEmail(v);setError('');}} placeholder="exemple@mail.com"/>
+            </>
+          ):(
             <View style={{backgroundColor:C.primaryLight,borderRadius:14,padding:12,marginBottom:12,alignItems:'center'}}>
               <Text style={{fontSize:17,fontWeight:'900',color:C.primary,textAlign:'center'}}>{fullName}</Text>
               <Text style={{fontSize:12,color:C.textLight,marginTop:4}}>{email}</Text>
             </View>
-            <Input label="Code PIN" value={pin} onChangeText={v=>{setPin(v.replace(/\D/g,'').slice(0,6));setError('');}} keyboardType="number-pad" secureTextEntry placeholder="4 à 6 chiffres"/>
-            <Btn label="Entrer" onPress={login}/>
-            <TouchableOpacity onPress={resetLocalAccess} style={{alignItems:'center',marginTop:16}}>
-              <Text style={{fontSize:12,color:C.textLight}}>Réinitialiser le PIN / changer d’accès</Text>
-            </TouchableOpacity>
-          </>}
+          )}
+          <Input label="Code PIN" value={pin} onChangeText={v=>{setPin(v.replace(/\D/g,'').slice(0,6));setError('');}} keyboardType="number-pad" secureTextEntry placeholder="4 à 6 chiffres"/>
+          {isRegister&&<Input label="Confirmer le code PIN" value={pinConfirm} onChangeText={v=>{setPinConfirm(v.replace(/\D/g,'').slice(0,6));setError('');}} keyboardType="number-pad" secureTextEntry placeholder="Répéter le PIN"/>}
 
-          {mode==='resetOtpRequest'&&<>
-            <View style={{backgroundColor:C.primaryLight,borderRadius:14,padding:12,marginBottom:12}}>
-              <Text style={{fontSize:12,color:C.textLight}}>Email du compte</Text>
-              <Text style={{fontSize:15,fontWeight:'900',color:C.primary,marginTop:3}}>{email}</Text>
-            </View>
-            <Btn label="Envoyer un code de réinitialisation" onPress={requestResetOtp} loading={loading}/>
-            <TouchableOpacity onPress={()=>setMode('login')} style={{alignItems:'center',marginTop:14}}>
-              <Text style={{fontSize:12,color:C.textLight}}>Annuler</Text>
-            </TouchableOpacity>
-          </>}
+          <Btn label={isRegister?'Créer mon accès':'Entrer'} onPress={isRegister?register:login}/>
 
-          {mode==='resetOtpVerify'&&<>
-            <Input label="Code reçu par email" value={otp} onChangeText={v=>{setOtp(v.replace(/\D/g,'').slice(0,6));setError('');}} keyboardType="number-pad" placeholder="6 chiffres"/>
-            <Btn label="Vérifier le code" onPress={verifyResetOtp} loading={loading}/>
-            <TouchableOpacity onPress={requestResetOtp} style={{alignItems:'center',marginTop:14}}>
-              <Text style={{fontSize:12,color:C.primary,fontWeight:'800'}}>Renvoyer le code</Text>
-            </TouchableOpacity>
-          </>}
-
-          {mode==='resetPin'&&<>
-            <Input label="Nouveau PIN" value={pin} onChangeText={v=>{setPin(v.replace(/\D/g,'').slice(0,6));setError('');}} keyboardType="number-pad" secureTextEntry placeholder="4 à 6 chiffres"/>
-            <Input label="Confirmer le nouveau PIN" value={pinConfirm} onChangeText={v=>{setPinConfirm(v.replace(/\D/g,'').slice(0,6));setError('');}} keyboardType="number-pad" secureTextEntry/>
-            <Btn label="Enregistrer le nouveau PIN" onPress={saveResetPin}/>
-          </>}
+          {!isRegister&&<TouchableOpacity onPress={resetLocalAccess} style={{alignItems:'center',marginTop:16}}><Text style={{fontSize:12,color:C.textLight}}>Changer d’identifiant / réinitialiser le PIN</Text></TouchableOpacity>}
 
           <Text style={{fontSize:11,color:'#9ca3af',textAlign:'center',marginTop:18,lineHeight:16}}>
-            Votre email est vérifié par code. Le PIN reste local sur ce téléphone.
+            Google Drive se configure séparément dans Plus &gt; Sauvegarde / Export.
           </Text>
         </View>
       </KeyboardAwareScrollView>
@@ -1011,37 +796,8 @@ const LoginScreen=({navigation})=>{
   );
 };
 
-
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
 const DashboardScreen=({navigation})=>{
-
-useEffect(()=>{
-  const onBackPress=()=>{
-    if(navigation.canGoBack()){
-      navigation.goBack();
-      return true;
-    }
-
-    Alert.alert(
-      'Quitter AutoCarnet',
-      'Voulez-vous fermer l’application ?',
-      [
-        {text:'Annuler',style:'cancel'},
-        {text:'Quitter',onPress:()=>BackHandler.exitApp()}
-      ]
-    );
-
-    return true;
-  };
-
-  const subscription=BackHandler.addEventListener(
-    'hardwareBackPress',
-    onBackPress
-  );
-
-  return ()=>subscription.remove();
-},[]);
-
   const{cars,syncStatus}=useApp();
   const[userName,setUserName]=useState('');
   useEffect(()=>{AsyncStorage.getItem('userName').then(n=>setUserName(n||''));},[]);
@@ -1572,14 +1328,15 @@ const handleSave=async()=>{
         <View style={{width:36}}/>
       </View>
       <KeyboardAwareScrollView
-        contentContainerStyle={{padding:20,paddingBottom:90}}
+        contentContainerStyle={{padding:20,paddingBottom:120}}
         keyboardShouldPersistTaps="handled"
         enableOnAndroid={true}
-        enableAutomaticScroll={true}
-        extraScrollHeight={70}
-        extraHeight={90}
-        keyboardOpeningTime={250}
-        showsVerticalScrollIndicator={false}
+        viewIsInsideTabBar={false}
+        resetScrollToCoords={{x:0,y:0}}
+        enableAutomaticScroll={false}
+        extraScrollHeight={20}
+        extraHeight={40}
+        keyboardOpeningTime={0}
       >
 
         <Text style={styles.section}>Informations générales</Text>
@@ -3037,32 +2794,6 @@ const styles=StyleSheet.create({
 });
 const Stack=createStackNavigator();
 const Tab=createBottomTabNavigator();
-
-const QuickAddOperationScreen=({navigation})=>{
-  const{cars}=useApp();
-
-  useEffect(()=>{
-    if(!cars.length){
-      Alert.alert('Aucun véhicule','Ajoutez d’abord un véhicule avant de saisir une opération.');
-      navigation.navigate('Vehicules');
-      return;
-    }
-
-    if(cars.length===1){
-      navigation.navigate('AddOp',{carId:cars[0].id});
-      return;
-    }
-
-    Alert.alert(
-      'Choisir un véhicule',
-      'Ouvrez la fiche du véhicule concerné puis ajoutez l’opération.'
-    );
-    navigation.navigate('Vehicules');
-  },[]);
-
-  return null;
-};
-
 const MainTabs=()=>(
   <Tab.Navigator screenOptions={{headerShown:false,tabBarStyle:{paddingBottom:30,paddingTop:8,height:92,backgroundColor:'#fff',borderTopWidth:1,borderTopColor:'#f3f4f6'},tabBarActiveTintColor:C.primary,tabBarInactiveTintColor:C.textLight,tabBarLabelStyle:{fontSize:10,fontWeight:'700',marginTop:-4,marginBottom:14}}}>
     <Tab.Screen name="Dashboard" component={DashboardScreen} options={{tabBarLabel:'Véhicules',tabBarIcon:({focused})=><Text style={{fontSize:focused?22:20,opacity:focused?1:0.6}}>🚗</Text>}}/>

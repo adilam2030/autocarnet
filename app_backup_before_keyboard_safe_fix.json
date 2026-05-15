@@ -11,27 +11,23 @@
       "resizeMode": "contain",
       "backgroundColor": "#1a56db"
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#1a56db"
       },
       "package": "com.autocarnet.app",
       "versionCode": 6,
-      "googleServicesFile": "./google-services.json",
-      "softwareKeyboardLayoutMode": "resize"
+      "googleServicesFile": "./google-services.json"
     },
     "plugins": [
       "@react-native-google-signin/google-signin"
     ],
     "extra": {
       "eas": {
-        "projectId": "aadfa285-2594-4116-ba20-c4c9c8ed2dea"
+        "projectId": "88d71430-a009-4b77-be22-05cf2e4563e1"
       }
-    },
-    "owner": "adilam2031"
+    }
   }
 }

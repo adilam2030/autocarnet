@@ -1,9 +1,9 @@
 import 'react-native-gesture-handler';
 import React, { useState, useEffect, useRef, createContext, useContext } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet, Image, BackHandler,
+  View, Text, ScrollView, TouchableOpacity, StyleSheet, Image,
   StatusBar, Alert, TextInput, Switch,
-  FlatList, Modal, ActivityIndicator, Share, Platform, Keyboard,
+  FlatList, Modal, ActivityIndicator, Share, Platform, BackHandler, Keyboard,
 } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
@@ -14,12 +14,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as ImagePicker from 'expo-image-picker';
 import * as AuthSession from 'expo-auth-session';
-let GoogleSignin=null;
-try{
-  GoogleSignin=require('@react-native-google-signin/google-signin').GoogleSignin;
-}catch(e){
-  GoogleSignin=null;
-}
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import * as WebBrowser from 'expo-web-browser';
 import * as FileSystem from 'expo-file-system';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -68,7 +63,6 @@ const MARQUES=[...Object.keys(MARQUES_MODELES).filter(m=>m!=='Autre').sort(),'Au
 const LETTRES_IMMAT='ABCDEFGHIJKLMNOPQRSTUVW'.split('');
 const REGIONS_IMMAT=Array.from({length:99},(_,i)=>String(i+1).padStart(2,'0'));
 const CARBURANTS=['Essence','Diesel','Hybride','Électrique'];
-const BOITES_VITESSE=['Automatique','Manuelle'];
 const OP_TYPES=['Vidange complète (huile + filtres)','Vidange simple (huile seule)','Courroie de distribution','Batterie','Pneus','Freins','Climatisation','Amortisseurs','Bougies','Boîte automatique','AdBlue','Liquide de frein','Liquide refroidissement','Visite technique','Assurance','Vignette','Autre'];
 const COULEURS_CAR=[{label:'Blanc',value:'#ffffff'},{label:'Gris clair',value:'#d1d5db'},{label:'Gris foncé',value:'#4b5563'},{label:'Noir',value:'#111827'},{label:'Bleu clair',value:'#60a5fa'},{label:'Bleu foncé',value:'#1d4ed8'},{label:'Rouge',value:'#ef4444'},{label:'Vert',value:'#10b981'},{label:'Violet',value:'#8b5cf6'},{label:'Jaune',value:'#facc15'}];
 const ASSURANCES_MA=['Allianz Maroc','Atlanta Assurance','AXA Assurance Maroc','MAMDA','MCMA','RMA Watanya','Saham Assurance','Sanad','SNTL','Wafa Assurance','Zurich Assurance','Autre'];
@@ -76,99 +70,6 @@ const GARAGES=['Concessionnaire','Mécanicien','FastPro','Midas','Speedy','Stati
 const FREQUENCES_KM=['5000','7500','10000','15000','20000'];
 const MOIS=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 const PERIODES=['Mois en cours','3 derniers mois','Année en cours','Tout'];
-
-const PRICE_REFERENTIAL_KEY='new_car_price_referential';
-const DEFAULT_PRICE_REFERENTIAL_URL='https://raw.githubusercontent.com/adilam2030/autocarnet-referentiel/main/prix-neuf-maroc.json';
-
-let NEW_CAR_PRICE_CACHE={};
-
-const cleanKey=v=>String(v||'').trim().toUpperCase();
-const priceKey=(marque,modele,version='',carburant='',boite='',annee='')=>
-  `${cleanKey(marque)}|${cleanKey(modele)}|${cleanKey(version)}|${cleanKey(carburant)}|${cleanKey(boite)}|${cleanKey(annee)}`;
-
-const loadPriceReferential=async()=>{
-  try{
-    const raw=await AsyncStorage.getItem(PRICE_REFERENTIAL_KEY);
-    if(raw){
-      NEW_CAR_PRICE_CACHE=JSON.parse(raw);
-      return;
-    }
-
-    // Premier lancement uniquement : chargement silencieux du référentiel AutoCarnet
-    const r=await fetch(DEFAULT_PRICE_REFERENTIAL_URL);
-    if(r.ok){
-      const data=await r.json();
-      const normalized={};
-
-      if(Array.isArray(data)){
-        data.forEach(x=>{
-          const k=priceKey(x.marque,x.modele,x.version,x.carburant,x.boite,x.annee);
-          const prix=Number(x.prixNeuf||x.prix||x.price);
-          if(k.includes('|')&&prix>0)normalized[k]=prix;
-        });
-      }
-
-      if(Object.keys(normalized).length>0){
-        NEW_CAR_PRICE_CACHE=normalized;
-        await AsyncStorage.setItem(PRICE_REFERENTIAL_KEY,JSON.stringify(normalized));
-        await AsyncStorage.setItem('price_referential_last_update',String(Date.now()));
-      }
-    }
-  }catch{}
-};
-
-const getPrixNeufEstimate=(car,details,base)=>{
-  const list=Object.entries(NEW_CAR_PRICE_CACHE);
-  const version=details?.version || car?.version || '';
-  const carburant=car?.carburant || '';
-  const boite=car?.boite || '';
-  const annee=car?.annee || '';
-
-  const exactKey=priceKey(car?.marque,car?.modele,version,carburant,boite,annee);
-  let exact=NEW_CAR_PRICE_CACHE[exactKey];
-  if(exact)return Number(exact);
-
-  const sameModel=list
-    .filter(([key])=>key.startsWith(`${cleanKey(car?.marque)}|${cleanKey(car?.modele)}|`))
-    .map(([,v])=>Number(v))
-    .filter(v=>v>0);
-
-  if(sameModel.length){
-    return Math.round((sameModel.reduce((a,b)=>a+b,0)/sameModel.length)/1000)*1000;
-  }
-
-  return Math.round((Number(base)||0)/1000)*1000;
-};
-
-const refreshPriceReferential=async()=>{
-  const r=await fetch(DEFAULT_PRICE_REFERENTIAL_URL);
-  if(!r.ok)throw new Error('Impossible de lire le référentiel AutoCarnet.');
-
-  const data=await r.json();
-  const normalized={};
-
-  if(Array.isArray(data)){
-    data.forEach(x=>{
-      const k=priceKey(x.marque,x.modele,x.version,x.carburant,x.boite,x.annee);
-      const prix=Number(x.prixNeuf||x.prix||x.price);
-      if(k.includes('|')&&prix>0)normalized[k]=prix;
-    });
-  }else{
-    Object.entries(data).forEach(([k,v])=>{
-      const prix=Number(v);
-      if(k.includes('|')&&prix>0)normalized[String(k).toUpperCase()]=prix;
-    });
-  }
-
-  if(Object.keys(normalized).length===0)throw new Error('Référentiel vide ou format incorrect.');
-
-  NEW_CAR_PRICE_CACHE=normalized;
-  await AsyncStorage.setItem(PRICE_REFERENTIAL_KEY,JSON.stringify(normalized));
-  await AsyncStorage.setItem('price_referential_last_update',String(Date.now()));
-  return Object.keys(normalized).length;
-};
-
-
 const CHECKLIST_VOYAGE=[
   {id:'pneus',label:'Pression des pneus vérifiée',icon:'🛞'},
   {id:'roue',label:'Roue de secours présente',icon:'🔧'},
@@ -235,11 +136,11 @@ const GOOGLE_DISCOVERY = {
 };
 
 
-if(GoogleSignin){GoogleSignin.configure({
+GoogleSignin.configure({
   webClientId: GOOGLE_WEB_CLIENT_ID,
   scopes: GOOGLE_SCOPES,
   offlineAccess: false,
-});}
+});
 
 
 
@@ -279,18 +180,6 @@ const fetchGoogleUser = async (accessToken) => {
 };
 
 const gSignIn = async () => {
-  if(!GoogleSignin){
-    Alert.alert('Info','Google Sync disponible uniquement dans l APK installée');
-    
-const marketLabel=
-  juste<rapid*1.03?'Bonne affaire':
-  juste>haut*0.97?'Prix élevé':
-  'Prix cohérent';
-
-return {
-marketLabel,
-success:false};
-  }
   try {
     await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
 
@@ -323,7 +212,6 @@ success:false};
 };
 
 const gSignOut = async () => {
-  if(!GoogleSignin)return;
   try {
     await GoogleSignin.signOut();
   } catch {}
@@ -443,7 +331,7 @@ const AppProvider=({children})=>{
   const[cars,setCars]=useState([]);
   const[operations,setOperations]=useState({});
   const[syncStatus,setSyncStatus]=useState('local');
-  useEffect(()=>{loadPriceReferential();loadLocal();},[]);
+  useEffect(()=>{loadLocal();},[]);
   const loadLocal=async()=>{
     const lc=await AsyncStorage.getItem('cars');
     const lo=await AsyncStorage.getItem('operations');
@@ -510,7 +398,7 @@ const Dropdown=({label,value,options,onSelect,placeholder,required})=>{
   return(
     <View style={{marginBottom:16}}>
       {label&&<Text style={{fontSize:13,fontWeight:'600',color:C.textMed,marginBottom:6}}>{label}{required&&<Text style={{color:C.danger}}> *</Text>}</Text>}
-      <TouchableOpacity onPress={()=>setShow(true)} style={{backgroundColor:'#fafafa',borderWidth:2,borderColor:value?C.primary:C.border,borderRadius:12,paddingHorizontal:14,paddingVertical:11,flexDirection:'row',justifyContent:'space-between',alignItems:'center'}}>
+      <TouchableOpacity onPress={()=>setShow(true)} style={{backgroundColor:'#fafafa',borderWidth:2,borderColor:value?C.primary:C.border,borderRadius:12,paddingHorizontal:14,paddingVertical:14,flexDirection:'row',justifyContent:'space-between',alignItems:'center'}}>
         <Text style={{fontSize:14,color:value?C.text:'#9ca3af',fontWeight:value?'600':'400'}}>{value||placeholder||'Sélectionner...'}</Text>
         <Text style={{fontSize:12,color:C.textLight}}>▼</Text>
       </TouchableOpacity>
@@ -523,7 +411,7 @@ const Dropdown=({label,value,options,onSelect,placeholder,required})=>{
           </View>
           <FlatList data={options} keyExtractor={i=>String(i)} contentContainerStyle={{paddingHorizontal:16,paddingBottom:40}}
             renderItem={({item})=>(
-              <TouchableOpacity onPress={()=>{onSelect(item);setShow(false);}} style={{paddingVertical:11,borderBottomWidth:1,borderBottomColor:'#f3f4f6',flexDirection:'row',alignItems:'center',justifyContent:'space-between'}}>
+              <TouchableOpacity onPress={()=>{onSelect(item);setShow(false);}} style={{paddingVertical:14,borderBottomWidth:1,borderBottomColor:'#f3f4f6',flexDirection:'row',alignItems:'center',justifyContent:'space-between'}}>
                 <Text style={{fontSize:15,color:item===value?C.primary:C.text,fontWeight:item===value?'700':'400'}}>{item}</Text>
                 {item===value&&<Text style={{color:C.primary,fontSize:18}}>✓</Text>}
               </TouchableOpacity>
@@ -573,7 +461,7 @@ const DatePicker=({label,value,onChange,required,future=false})=>{
   return(
     <View style={{marginBottom:16}}>
       {label&&<Text style={{fontSize:13,fontWeight:'600',color:C.textMed,marginBottom:6}}>{label}{required&&<Text style={{color:C.danger}}> *</Text>}</Text>}
-      <TouchableOpacity onPress={open} style={{backgroundColor:'#fafafa',borderWidth:2,borderColor:value?C.primary:C.border,borderRadius:12,paddingHorizontal:14,paddingVertical:11,flexDirection:'row',justifyContent:'space-between',alignItems:'center'}}>
+      <TouchableOpacity onPress={open} style={{backgroundColor:'#fafafa',borderWidth:2,borderColor:value?C.primary:C.border,borderRadius:12,paddingHorizontal:14,paddingVertical:14,flexDirection:'row',justifyContent:'space-between',alignItems:'center'}}>
         <Text style={{fontSize:14,color:value?C.text:'#9ca3af',fontWeight:value?'600':'400'}}>{value?fmtDate(value):'Sélectionner une date'}</Text>
         <Text style={{fontSize:18}}>📅</Text>
       </TouchableOpacity>
@@ -584,7 +472,7 @@ const DatePicker=({label,value,onChange,required,future=false})=>{
             <View style={{width:40,height:4,backgroundColor:C.border,borderRadius:2,marginBottom:12}}/>
             <Text style={{fontSize:16,fontWeight:'700',color:C.text}}>{label||'Date'}</Text>
           </View>
-          <View style={{backgroundColor:C.primaryLight,borderRadius:14,padding:11,alignItems:'center',marginBottom:16}}>
+          <View style={{backgroundColor:C.primaryLight,borderRadius:14,padding:14,alignItems:'center',marginBottom:16}}>
             <Text style={{fontSize:24,fontWeight:'800',color:C.primary}}>{String(day).padStart(2,'0')} / {String(month).padStart(2,'0')} / {year}</Text>
           </View>
           <View style={{flexDirection:'row',gap:8,marginBottom:16}}>
@@ -627,13 +515,13 @@ const ImmatInput=({value,onChange})=>{
         <View style={{flex:3}}>
           <TextInput value={num} onChangeText={v=>{const n=v.replace(/\D/g,'').slice(0,5);update(n,lettre,region);}}
             placeholder="12345" keyboardType="number-pad" maxLength={5}
-            style={{backgroundColor:'#fafafa',borderWidth:2,borderColor:num?C.primary:C.border,borderRadius:12,paddingHorizontal:10,paddingVertical:11,fontSize:18,fontWeight:'700',color:C.text,textAlign:'center'}}
+            style={{backgroundColor:'#fafafa',borderWidth:2,borderColor:num?C.primary:C.border,borderRadius:12,paddingHorizontal:10,paddingVertical:14,fontSize:18,fontWeight:'700',color:C.text,textAlign:'center'}}
             placeholderTextColor="#9ca3af"/>
           <Text style={{fontSize:10,color:C.textLight,textAlign:'center',marginTop:4}}>Numéro</Text>
         </View>
         <Text style={{fontSize:24,color:C.textLight,paddingTop:12}}>·</Text>
         <View style={{flex:2}}>
-          <TouchableOpacity onPress={()=>setShowL(true)} style={{backgroundColor:'#fafafa',borderWidth:2,borderColor:lettre?C.primary:C.border,borderRadius:12,paddingVertical:11,alignItems:'center'}}>
+          <TouchableOpacity onPress={()=>setShowL(true)} style={{backgroundColor:'#fafafa',borderWidth:2,borderColor:lettre?C.primary:C.border,borderRadius:12,paddingVertical:14,alignItems:'center'}}>
             <Text style={{fontSize:20,fontWeight:'800',color:lettre?C.primary:'#9ca3af'}}>{lettre||'?'}</Text>
           </TouchableOpacity>
           <Text style={{fontSize:10,color:C.textLight,textAlign:'center',marginTop:4}}>Lettre</Text>
@@ -642,7 +530,7 @@ const ImmatInput=({value,onChange})=>{
         <View style={{flex:2}}>
           <TextInput value={region} onChangeText={v=>{const r=v.replace(/\D/g,'').slice(0,2);update(num,lettre,r);}}
             placeholder="01" keyboardType="number-pad" maxLength={2}
-            style={{backgroundColor:'#fafafa',borderWidth:2,borderColor:region?C.primary:C.border,borderRadius:12,paddingHorizontal:6,paddingVertical:11,fontSize:18,fontWeight:'800',color:C.primary,textAlign:'center'}}
+            style={{backgroundColor:'#fafafa',borderWidth:2,borderColor:region?C.primary:C.border,borderRadius:12,paddingHorizontal:6,paddingVertical:14,fontSize:18,fontWeight:'800',color:C.primary,textAlign:'center'}}
             placeholderTextColor="#9ca3af"/>
           <Text style={{fontSize:10,color:C.textLight,textAlign:'center',marginTop:4}}>Région</Text>
         </View>
@@ -674,42 +562,13 @@ const ImmatInput=({value,onChange})=>{
 const Card=({children,style,onPress})=>{const s=[{backgroundColor:C.white,borderRadius:16,padding:16,marginBottom:12,shadowColor:'#000',shadowOffset:{width:0,height:2},shadowOpacity:0.07,shadowRadius:8,elevation:3},style];return onPress?<TouchableOpacity activeOpacity={0.85} onPress={onPress} style={s}>{children}</TouchableOpacity>:<View style={s}>{children}</View>;};
 const Badge=({status,label})=><View style={{flexDirection:'row',alignItems:'center',gap:5,paddingHorizontal:10,paddingVertical:4,borderRadius:20,backgroundColor:SB[status]||SB.na}}><View style={{width:7,height:7,borderRadius:4,backgroundColor:SC[status]||SC.na}}/><Text style={{fontSize:12,fontWeight:'700',color:SC[status]||SC.na}}>{label||SL[status]||'N/A'}</Text></View>;
 const InfoRow=({label,value,last})=><View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center',paddingVertical:10,borderBottomWidth:last?0:1,borderBottomColor:'#f3f4f6'}}><Text style={{fontSize:13,color:C.textLight}}>{label}</Text><Text style={{fontSize:13,fontWeight:'600',color:C.text,maxWidth:'60%',textAlign:'right'}}>{value||'—'}</Text></View>;
-const Btn=({label,onPress,variant='primary',loading,style})=>{const bg=variant==='primary'?C.primary:variant==='danger'?C.danger:'transparent';const color=variant==='outline'?C.primary:'#fff';return<TouchableOpacity activeOpacity={0.8} onPress={onPress} disabled={loading} style={[{backgroundColor:bg,borderRadius:12,paddingVertical:11,paddingHorizontal:20,alignItems:'center',justifyContent:'center',borderWidth:variant==='outline'?2:0,borderColor:C.primary},style]}>{loading?<ActivityIndicator color={color}/>:<Text style={{fontSize:15,fontWeight:'700',color}}>{label}</Text>}</TouchableOpacity>;};
+const Btn=({label,onPress,variant='primary',loading,style})=>{const bg=variant==='primary'?C.primary:variant==='danger'?C.danger:'transparent';const color=variant==='outline'?C.primary:'#fff';return<TouchableOpacity activeOpacity={0.8} onPress={onPress} disabled={loading} style={[{backgroundColor:bg,borderRadius:12,paddingVertical:14,paddingHorizontal:20,alignItems:'center',justifyContent:'center',borderWidth:variant==='outline'?2:0,borderColor:C.primary},style]}>{loading?<ActivityIndicator color={color}/>:<Text style={{fontSize:15,fontWeight:'700',color}}>{label}</Text>}</TouchableOpacity>;};
 const Input=({label,required,...props})=><View style={{marginBottom:16}}>{label&&<Text style={{fontSize:13,fontWeight:'600',color:C.textMed,marginBottom:6}}>{label}{required&&<Text style={{color:C.danger}}> *</Text>}</Text>}<TextInput style={{backgroundColor:'#fafafa',borderWidth:2,borderColor:C.border,borderRadius:12,paddingHorizontal:14,paddingVertical:12,fontSize:14,color:C.text}} placeholderTextColor="#9ca3af" {...props}/></View>;
 
 // ─── LOGIN LOCAL EMAIL + PIN ────────────────────────────────────────────────
 const LOCAL_EMAIL_KEY = 'local_auth_email';
 const LOCAL_NAME_KEY = 'local_auth_name';
 const LOCAL_PIN_KEY = 'local_auth_pin';
-const LOCAL_EMAIL_VERIFIED_KEY = 'local_email_verified';
-const SEND_OTP_URL = 'https://tgwnwljbdezkeksiyhij.supabase.co/functions/v1/send-otp';
-const VERIFY_OTP_URL = 'https://tgwnwljbdezkeksiyhij.supabase.co/functions/v1/verify-otp';
-const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
-
-
-const sendEmailOtp=async(email)=>{
-  const r=await fetch(SEND_OTP_URL,{
-    method:'POST',
-    headers:{
-      'Content-Type':'application/json',
-      'Authorization':`Bearer ${SUPABASE_ANON_KEY}`
-    },
-    body:JSON.stringify({email})
-  });
-  return await r.json();
-};
-
-const verifyEmailOtp=async(email,code)=>{
-  const r=await fetch(VERIFY_OTP_URL,{
-    method:'POST',
-    headers:{
-      'Content-Type':'application/json',
-      'Authorization':`Bearer ${SUPABASE_ANON_KEY}`
-    },
-    body:JSON.stringify({email,code})
-  });
-  return await r.json();
-};
 
 const LoginScreen=({navigation})=>{
   const[mode,setMode]=useState('loading');
@@ -717,9 +576,6 @@ const LoginScreen=({navigation})=>{
   const[fullName,setFullName]=useState('');
   const[pin,setPin]=useState('');
   const[pinConfirm,setPinConfirm]=useState('');
-  const[otp,setOtp]=useState('');
-  const[otpVerified,setOtpVerified]=useState(false);
-  const[loading,setLoading]=useState(false);
   const[error,setError]=useState('');
 
   useEffect(()=>{
@@ -727,9 +583,7 @@ const LoginScreen=({navigation})=>{
       const savedEmail=await AsyncStorage.getItem(LOCAL_EMAIL_KEY);
       const savedName=await AsyncStorage.getItem(LOCAL_NAME_KEY);
       const savedPin=await AsyncStorage.getItem(LOCAL_PIN_KEY);
-      const verified=await AsyncStorage.getItem(LOCAL_EMAIL_VERIFIED_KEY);
-
-      if(savedEmail&&savedPin&&verified==='true'){
+      if(savedEmail&&savedPin){
         setEmail(savedEmail);
         setFullName(savedName||savedEmail.split('@')[0]);
         setMode('login');
@@ -740,72 +594,17 @@ const LoginScreen=({navigation})=>{
     load();
   },[]);
 
-  const cleanEmail=()=>email.trim().toLowerCase();
-
-  const requestOtp=async()=>{
-    const ce=cleanEmail();
-    const cn=fullName.trim();
-
-    if(!cn){setError('Saisissez votre nom et prénom.');return;}
-    if(!ce||!ce.includes('@')){setError('Saisissez une adresse mail valide.');return;}
-
-    setLoading(true);
-    setError('');
-
-    try{
-      const res=await sendEmailOtp(ce);
-      if(res.success){
-        setEmail(ce);
-        setMode('otp');
-        Alert.alert('Code envoyé','Vérifiez votre boîte mail puis saisissez le code reçu.');
-      }else{
-        setError(res.error||'Impossible d’envoyer le code.');
-      }
-    }catch(e){
-      setError('Erreur réseau. Réessayez.');
-    }finally{
-      setLoading(false);
-    }
-  };
-
-  const verifyOtp=async()=>{
-    const ce=cleanEmail();
-    const code=otp.replace(/\D/g,'');
-
-    if(code.length!==6){setError('Saisissez le code à 6 chiffres.');return;}
-
-    setLoading(true);
-    setError('');
-
-    try{
-      const res=await verifyEmailOtp(ce,code);
-      if(res.success&&res.verified){
-        setOtpVerified(true);
-        setMode('createPin');
-      }else{
-        setError(res.error||'Code invalide ou expiré.');
-      }
-    }catch(e){
-      setError('Erreur réseau. Réessayez.');
-    }finally{
-      setLoading(false);
-    }
-  };
-
-  const createPin=async()=>{
-    const ce=cleanEmail();
-    const cn=fullName.trim();
-
-    if(!otpVerified){setError('Email non vérifié.');return;}
+  const register=async()=>{
+    const cleanEmail=email.trim().toLowerCase();
+    const cleanName=fullName.trim();
+    if(!cleanName){setError('Saisissez votre nom et prénom.');return;}
+    if(!cleanEmail||!cleanEmail.includes('@')){setError('Saisissez une adresse mail valide.');return;}
     if(!/^\d{4,6}$/.test(pin)){setError('Le code PIN doit contenir 4 à 6 chiffres.');return;}
     if(pin!==pinConfirm){setError('Les deux codes PIN ne sont pas identiques.');return;}
-
-    await AsyncStorage.setItem(LOCAL_EMAIL_KEY,ce);
-    await AsyncStorage.setItem(LOCAL_NAME_KEY,cn);
+    await AsyncStorage.setItem(LOCAL_EMAIL_KEY,cleanEmail);
+    await AsyncStorage.setItem(LOCAL_NAME_KEY,cleanName);
     await AsyncStorage.setItem(LOCAL_PIN_KEY,pin);
-    await AsyncStorage.setItem(LOCAL_EMAIL_VERIFIED_KEY,'true');
-    await AsyncStorage.setItem('userName',cn);
-
+    await AsyncStorage.setItem('userName',cleanName);
     navigation.replace('Main');
   };
 
@@ -822,188 +621,62 @@ const LoginScreen=({navigation})=>{
   const resetLocalAccess=()=>{
     Alert.alert(
       'Réinitialiser l’accès',
-      'Pour protéger votre compte, un code sera envoyé par email avant de créer un nouveau PIN.',
+      'Cette action supprime uniquement l’identifiant et le PIN local. Les véhicules restent enregistrés sur ce téléphone.',
       [
         {text:'Annuler'},
-        {text:'Continuer',style:'destructive',onPress:async()=>{
-          setPin('');
-          setPinConfirm('');
-          setOtp('');
-          setOtpVerified(false);
-          setError('');
-          setMode('resetOtpRequest');
+        {text:'Réinitialiser',style:'destructive',onPress:async()=>{
+          await AsyncStorage.multiRemove([LOCAL_EMAIL_KEY,LOCAL_NAME_KEY,LOCAL_PIN_KEY,'userName']);
+          setEmail('');setFullName('');setPin('');setPinConfirm('');setError('');setMode('register');
         }}
       ]
     );
-  };
-
-  const requestResetOtp=async()=>{
-    const ce=cleanEmail();
-    if(!ce||!ce.includes('@')){setError('Adresse mail invalide.');return;}
-
-    setLoading(true);
-    setError('');
-
-    try{
-      const res=await sendEmailOtp(ce);
-      if(res.success){
-        setMode('resetOtpVerify');
-        Alert.alert('Code envoyé','Saisissez le code reçu par email.');
-      }else{
-        setError(res.error||'Impossible d’envoyer le code.');
-      }
-    }catch{
-      setError('Erreur réseau. Réessayez.');
-    }finally{
-      setLoading(false);
-    }
-  };
-
-  const verifyResetOtp=async()=>{
-    const ce=cleanEmail();
-    const code=otp.replace(/\D/g,'');
-
-    if(code.length!==6){setError('Saisissez le code à 6 chiffres.');return;}
-
-    setLoading(true);
-    setError('');
-
-    try{
-      const res=await verifyEmailOtp(ce,code);
-      if(res.success&&res.verified){
-        setOtpVerified(true);
-        setMode('resetPin');
-      }else{
-        setError(res.error||'Code invalide ou expiré.');
-      }
-    }catch{
-      setError('Erreur réseau. Réessayez.');
-    }finally{
-      setLoading(false);
-    }
-  };
-
-  const saveResetPin=async()=>{
-    if(!otpVerified){setError('Email non vérifié.');return;}
-    if(!/^\d{4,6}$/.test(pin)){setError('Le code PIN doit contenir 4 à 6 chiffres.');return;}
-    if(pin!==pinConfirm){setError('Les deux codes PIN ne sont pas identiques.');return;}
-
-    await AsyncStorage.setItem(LOCAL_PIN_KEY,pin);
-    await AsyncStorage.setItem(LOCAL_EMAIL_VERIFIED_KEY,'true');
-
-    Alert.alert('PIN réinitialisé','Votre nouveau code PIN est enregistré.');
-    setPin('');
-    setPinConfirm('');
-    setOtp('');
-    setOtpVerified(false);
-    setMode('login');
   };
 
   if(mode==='loading'){
     return <SafeAreaView style={{flex:1,backgroundColor:C.primary,alignItems:'center',justifyContent:'center'}}><ActivityIndicator color="#fff"/></SafeAreaView>;
   }
 
-  const title=
-    mode==='login'?'Bienvenue':
-    mode==='otp'?'Vérification email':
-    mode==='createPin'?'Créer votre PIN':
-    mode==='resetOtpRequest'?'Réinitialisation':
-    mode==='resetOtpVerify'?'Vérifier le code':
-    mode==='resetPin'?'Nouveau PIN':
-    'Créer votre accès';
-
-  const subtitle=
-    mode==='login'?'Votre profil est mémorisé. Saisissez uniquement votre code PIN.':
-    mode==='otp'?'Saisissez le code reçu par email.':
-    mode==='createPin'?'Email vérifié. Créez maintenant votre code PIN.':
-    mode==='resetOtpRequest'?'Un code sera envoyé à votre email pour autoriser la réinitialisation.':
-    mode==='resetOtpVerify'?'Saisissez le code reçu par email.':
-    mode==='resetPin'?'Définissez votre nouveau code PIN.':
-    'Saisissez votre nom, votre email, puis vérifiez votre adresse.';
-
+  const isRegister=mode==='register';
   return(
     <SafeAreaView style={{flex:1,backgroundColor:C.primary,paddingTop:SAFE_TOP,paddingBottom:SAFE_BOTTOM}}>
       <StatusBar barStyle="light-content" backgroundColor={C.primary}/>
-      <KeyboardAwareScrollView contentContainerStyle={{flexGrow:1,justifyContent:'center',paddingHorizontal:22,paddingVertical:12}} keyboardShouldPersistTaps="handled" enableOnAndroid>
-        <View style={{alignItems:'center',marginBottom:18}}>
-          <View style={{width:70,height:70,borderRadius:20,backgroundColor:'rgba(255,255,255,0.2)',alignItems:'center',justifyContent:'center',marginBottom:16}}>
-            <Text style={{fontSize:34}}>🚗</Text>
+      <KeyboardAwareScrollView contentContainerStyle={{flexGrow:1,justifyContent:'center',padding:24}} keyboardShouldPersistTaps="handled" enableOnAndroid>
+        <View style={{alignItems:'center',marginBottom:34}}>
+          <View style={{width:88,height:88,borderRadius:24,backgroundColor:'rgba(255,255,255,0.2)',alignItems:'center',justifyContent:'center',marginBottom:16}}>
+            <Text style={{fontSize:44}}>🚗</Text>
           </View>
-          <Text style={{fontSize:28,fontWeight:'800',color:'#fff',letterSpacing:-1}}>AutoCarnet</Text>
-          <Text style={{fontSize:14,color:'rgba(255,255,255,0.75)',marginTop:4}}>Connexion simple et sécurisée</Text>
+          <Text style={{fontSize:32,fontWeight:'800',color:'#fff',letterSpacing:-1}}>AutoCarnet</Text>
+          <Text style={{fontSize:14,color:'rgba(255,255,255,0.75)',marginTop:4}}>Connexion simple et rapide</Text>
         </View>
 
-        <View style={{backgroundColor:'#fff',borderRadius:22,padding:18}}>
-          <Text style={{fontSize:21,fontWeight:'800',color:C.text,marginBottom:4}}>{title}</Text>
-          <Text style={{fontSize:13,color:C.textLight,marginBottom:18,lineHeight:20}}>{subtitle}</Text>
+        <View style={{backgroundColor:'#fff',borderRadius:24,padding:24}}>
+          <Text style={{fontSize:22,fontWeight:'800',color:C.text,marginBottom:6}}>{isRegister?'Créer votre accès':'Bienvenue'}</Text>
+          <Text style={{fontSize:13,color:C.textLight,marginBottom:22,lineHeight:20}}>
+            {isRegister?'Saisissez votre nom, votre adresse mail et créez un code PIN.':'Votre profil est mémorisé. Saisissez uniquement votre code PIN.'}
+          </Text>
 
-          {error?<View style={{backgroundColor:C.dangerLight,borderRadius:10,padding:10,marginBottom:14}}>
-            <Text style={{color:C.danger,fontSize:13,fontWeight:'600'}}>{error}</Text>
-          </View>:null}
+          {error?<View style={{backgroundColor:C.dangerLight,borderRadius:10,padding:10,marginBottom:14}}><Text style={{color:C.danger,fontSize:13,fontWeight:'600'}}>{error}</Text></View>:null}
 
-          {mode==='register'&&<>
-            <Input label="Nom et prénom" value={fullName} onChangeText={v=>{setFullName(v);setError('');}} placeholder="Ex: Lamiaa El..." />
-            <Input label="Adresse mail" value={email} autoCapitalize="none" keyboardType="email-address" onChangeText={v=>{setEmail(v);setError('');}} placeholder="exemple@mail.com"/>
-            <Btn label="Envoyer le code" onPress={requestOtp} loading={loading}/>
-          </>}
-
-          {mode==='otp'&&<>
-            <View style={{backgroundColor:C.primaryLight,borderRadius:14,padding:12,marginBottom:12}}>
-              <Text style={{fontSize:12,color:C.textLight}}>Code envoyé à</Text>
-              <Text style={{fontSize:15,fontWeight:'900',color:C.primary,marginTop:3}}>{email}</Text>
-            </View>
-            <Input label="Code reçu par email" value={otp} onChangeText={v=>{setOtp(v.replace(/\D/g,'').slice(0,6));setError('');}} keyboardType="number-pad" placeholder="6 chiffres"/>
-            <Btn label="Vérifier le code" onPress={verifyOtp} loading={loading}/>
-            <TouchableOpacity onPress={requestOtp} style={{alignItems:'center',marginTop:14}}>
-              <Text style={{fontSize:12,color:C.primary,fontWeight:'800'}}>Renvoyer le code</Text>
-            </TouchableOpacity>
-          </>}
-
-          {mode==='createPin'&&<>
-            <Input label="Code PIN" value={pin} onChangeText={v=>{setPin(v.replace(/\D/g,'').slice(0,6));setError('');}} keyboardType="number-pad" secureTextEntry placeholder="4 à 6 chiffres"/>
-            <Input label="Confirmer le code PIN" value={pinConfirm} onChangeText={v=>{setPinConfirm(v.replace(/\D/g,'').slice(0,6));setError('');}} keyboardType="number-pad" secureTextEntry placeholder="Répéter le PIN"/>
-            <Btn label="Créer mon accès" onPress={createPin}/>
-          </>}
-
-          {mode==='login'&&<>
-            <View style={{backgroundColor:C.primaryLight,borderRadius:14,padding:12,marginBottom:12,alignItems:'center'}}>
-              <Text style={{fontSize:17,fontWeight:'900',color:C.primary,textAlign:'center'}}>{fullName}</Text>
+          {isRegister?(
+            <>
+              <Input label="Nom et prénom" value={fullName} onChangeText={v=>{setFullName(v);setError('');}} placeholder="Ex: Lamiaa El..." />
+              <Input label="Adresse mail" value={email} autoCapitalize="none" keyboardType="email-address" onChangeText={v=>{setEmail(v);setError('');}} placeholder="exemple@mail.com"/>
+            </>
+          ):(
+            <View style={{backgroundColor:C.primaryLight,borderRadius:16,padding:16,marginBottom:16,alignItems:'center'}}>
+              <Text style={{fontSize:18,fontWeight:'900',color:C.primary,textAlign:'center'}}>{fullName}</Text>
               <Text style={{fontSize:12,color:C.textLight,marginTop:4}}>{email}</Text>
             </View>
-            <Input label="Code PIN" value={pin} onChangeText={v=>{setPin(v.replace(/\D/g,'').slice(0,6));setError('');}} keyboardType="number-pad" secureTextEntry placeholder="4 à 6 chiffres"/>
-            <Btn label="Entrer" onPress={login}/>
-            <TouchableOpacity onPress={resetLocalAccess} style={{alignItems:'center',marginTop:16}}>
-              <Text style={{fontSize:12,color:C.textLight}}>Réinitialiser le PIN / changer d’accès</Text>
-            </TouchableOpacity>
-          </>}
+          )}
+          <Input label="Code PIN" value={pin} onChangeText={v=>{setPin(v.replace(/\D/g,'').slice(0,6));setError('');}} keyboardType="number-pad" secureTextEntry placeholder="4 à 6 chiffres"/>
+          {isRegister&&<Input label="Confirmer le code PIN" value={pinConfirm} onChangeText={v=>{setPinConfirm(v.replace(/\D/g,'').slice(0,6));setError('');}} keyboardType="number-pad" secureTextEntry placeholder="Répéter le PIN"/>}
 
-          {mode==='resetOtpRequest'&&<>
-            <View style={{backgroundColor:C.primaryLight,borderRadius:14,padding:12,marginBottom:12}}>
-              <Text style={{fontSize:12,color:C.textLight}}>Email du compte</Text>
-              <Text style={{fontSize:15,fontWeight:'900',color:C.primary,marginTop:3}}>{email}</Text>
-            </View>
-            <Btn label="Envoyer un code de réinitialisation" onPress={requestResetOtp} loading={loading}/>
-            <TouchableOpacity onPress={()=>setMode('login')} style={{alignItems:'center',marginTop:14}}>
-              <Text style={{fontSize:12,color:C.textLight}}>Annuler</Text>
-            </TouchableOpacity>
-          </>}
+          <Btn label={isRegister?'Créer mon accès':'Entrer'} onPress={isRegister?register:login}/>
 
-          {mode==='resetOtpVerify'&&<>
-            <Input label="Code reçu par email" value={otp} onChangeText={v=>{setOtp(v.replace(/\D/g,'').slice(0,6));setError('');}} keyboardType="number-pad" placeholder="6 chiffres"/>
-            <Btn label="Vérifier le code" onPress={verifyResetOtp} loading={loading}/>
-            <TouchableOpacity onPress={requestResetOtp} style={{alignItems:'center',marginTop:14}}>
-              <Text style={{fontSize:12,color:C.primary,fontWeight:'800'}}>Renvoyer le code</Text>
-            </TouchableOpacity>
-          </>}
-
-          {mode==='resetPin'&&<>
-            <Input label="Nouveau PIN" value={pin} onChangeText={v=>{setPin(v.replace(/\D/g,'').slice(0,6));setError('');}} keyboardType="number-pad" secureTextEntry placeholder="4 à 6 chiffres"/>
-            <Input label="Confirmer le nouveau PIN" value={pinConfirm} onChangeText={v=>{setPinConfirm(v.replace(/\D/g,'').slice(0,6));setError('');}} keyboardType="number-pad" secureTextEntry/>
-            <Btn label="Enregistrer le nouveau PIN" onPress={saveResetPin}/>
-          </>}
+          {!isRegister&&<TouchableOpacity onPress={resetLocalAccess} style={{alignItems:'center',marginTop:16}}><Text style={{fontSize:12,color:C.textLight}}>Changer d’identifiant / réinitialiser le PIN</Text></TouchableOpacity>}
 
           <Text style={{fontSize:11,color:'#9ca3af',textAlign:'center',marginTop:18,lineHeight:16}}>
-            Votre email est vérifié par code. Le PIN reste local sur ce téléphone.
+            Google Drive se configure séparément dans Plus &gt; Sauvegarde / Export.
           </Text>
         </View>
       </KeyboardAwareScrollView>
@@ -1011,37 +684,8 @@ const LoginScreen=({navigation})=>{
   );
 };
 
-
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
 const DashboardScreen=({navigation})=>{
-
-useEffect(()=>{
-  const onBackPress=()=>{
-    if(navigation.canGoBack()){
-      navigation.goBack();
-      return true;
-    }
-
-    Alert.alert(
-      'Quitter AutoCarnet',
-      'Voulez-vous fermer l’application ?',
-      [
-        {text:'Annuler',style:'cancel'},
-        {text:'Quitter',onPress:()=>BackHandler.exitApp()}
-      ]
-    );
-
-    return true;
-  };
-
-  const subscription=BackHandler.addEventListener(
-    'hardwareBackPress',
-    onBackPress
-  );
-
-  return ()=>subscription.remove();
-},[]);
-
   const{cars,syncStatus}=useApp();
   const[userName,setUserName]=useState('');
   useEffect(()=>{AsyncStorage.getItem('userName').then(n=>setUserName(n||''));},[]);
@@ -1169,12 +813,12 @@ const CarDetailScreen=({route,navigation})=>{
   const kmModalJSX=(
     <Modal visible={kmModal} transparent animationType="fade" onRequestClose={()=>setKmModal(false)}>
       <View style={{flex:1,backgroundColor:'rgba(0,0,0,0.5)',justifyContent:'center',padding:24}}>
-        <View style={{backgroundColor:'#fff',borderRadius:22,padding:18}}>
+        <View style={{backgroundColor:'#fff',borderRadius:24,padding:24}}>
           <Text style={{fontSize:18,fontWeight:'800',color:C.text,marginBottom:6}}>🔢 Mise à jour kilométrage</Text>
           <Text style={{fontSize:13,color:C.textLight,marginBottom:16}}>Kilométrage actuel : {fmtKm(car.km)}</Text>
           <TextInput value={newKm} onChangeText={v=>{setNewKm(v.replace(/\D/g,''));setKmError('');}}
             keyboardType="number-pad" placeholder={String(car.km||0)}
-            style={{backgroundColor:'#fafafa',borderWidth:2,borderColor:kmError?C.danger:C.primary,borderRadius:12,paddingHorizontal:16,paddingVertical:11,fontSize:20,fontWeight:'700',textAlign:'center',color:C.text,marginBottom:8}}
+            style={{backgroundColor:'#fafafa',borderWidth:2,borderColor:kmError?C.danger:C.primary,borderRadius:12,paddingHorizontal:16,paddingVertical:14,fontSize:20,fontWeight:'700',textAlign:'center',color:C.text,marginBottom:8}}
             blurOnSubmit={false}/>
           {kmError?<Text style={{color:C.danger,fontSize:13,textAlign:'center',marginBottom:8}}>{kmError}</Text>:null}
           <Text style={{fontSize:11,color:C.textLight,textAlign:'center',marginBottom:16}}>Le nouveau kilométrage doit être ≥ {fmtKm(car.km)}</Text>
@@ -1208,7 +852,7 @@ const CarDetailScreen=({route,navigation})=>{
           <ScrollView showsVerticalScrollIndicator={false}>
             {CHECKLIST_VOYAGE.map(item=>(
               <TouchableOpacity key={item.id} onPress={()=>setChecklist(c=>({...c,[item.id]:!c[item.id]}))}
-                style={{flexDirection:'row',alignItems:'center',gap:14,paddingVertical:11,borderBottomWidth:1,borderBottomColor:'#f3f4f6'}}>
+                style={{flexDirection:'row',alignItems:'center',gap:14,paddingVertical:14,borderBottomWidth:1,borderBottomColor:'#f3f4f6'}}>
                 <View style={{width:28,height:28,borderRadius:14,backgroundColor:checklist[item.id]?C.success:C.border,alignItems:'center',justifyContent:'center'}}>
                   {checklist[item.id]&&<Text style={{color:'#fff',fontWeight:'800',fontSize:14}}>✓</Text>}
                 </View>
@@ -1298,7 +942,7 @@ const CarDetailScreen=({route,navigation})=>{
       </View>
       <View style={{flexDirection:'row',backgroundColor:'#fff',borderBottomWidth:1,borderBottomColor:C.border}}>
         {TABS.map(([key,label])=>(
-          <TouchableOpacity key={key} onPress={()=>setTab(key)} style={{flex:1,paddingVertical:11,alignItems:'center',borderBottomWidth:2,borderBottomColor:tab===key?C.primary:'transparent'}}>
+          <TouchableOpacity key={key} onPress={()=>setTab(key)} style={{flex:1,paddingVertical:14,alignItems:'center',borderBottomWidth:2,borderBottomColor:tab===key?C.primary:'transparent'}}>
             <Text style={{fontSize:12,fontWeight:'600',color:tab===key?C.primary:C.textLight}}>{label}</Text>
           </TouchableOpacity>
         ))}
@@ -1370,7 +1014,7 @@ const CarDetailScreen=({route,navigation})=>{
             <InfoRow label="Restant avant remplissage" value={`${Math.max(0,(car.adblueData.prochainKm-(car.km||0))).toLocaleString('fr-FR')} km`} last/>
           </Card>}
           <Btn label="+ Ajouter une opération" onPress={()=>navigation.navigate('AddOp',{carId})} style={{marginTop:4}}/>
-          <TouchableOpacity onPress={()=>setChecklistModal(true)} style={{flexDirection:'row',alignItems:'center',justifyContent:'center',gap:10,backgroundColor:'#fff',borderWidth:2,borderColor:'#10b981',borderRadius:12,paddingVertical:11,marginTop:8}}>
+          <TouchableOpacity onPress={()=>setChecklistModal(true)} style={{flexDirection:'row',alignItems:'center',justifyContent:'center',gap:10,backgroundColor:'#fff',borderWidth:2,borderColor:'#10b981',borderRadius:12,paddingVertical:14,marginTop:8}}>
             <Text style={{fontSize:18}}>🗺️</Text>
             <Text style={{fontSize:15,fontWeight:'700',color:'#10b981'}}>Checklist Voyage</Text>
           </TouchableOpacity>
@@ -1481,8 +1125,6 @@ const CarDetailScreen=({route,navigation})=>{
             <InfoRow label="Année" value={String(car.annee||'')}/>
             <InfoRow label="1ère MEC" value={fmtDate(car.dateMEC)}/>
             <InfoRow label="Carburant" value={car.carburant}/>
-            <InfoRow label="Boîte" value={car.boite||'—'}/>
-              <InfoRow label="Origine" value={(showFine||argusGenerated)?details.origine:'—'}/>
             <InfoRow label="Puissance fiscale" value={car.puissanceFiscale?`${car.puissanceFiscale} CV`:'—'}/>
             <InfoRow label="AdBlue" value={car.adblue?'Oui':'Non'} last/>
           </Card>
@@ -1507,7 +1149,7 @@ const AddCarScreen=({route,navigation})=>{
     marque:ex?.marque||'',modele:ex?.modele||'',version:ex?.version||'',
     immat:ex?.immat||'',annee:String(ex?.annee||2026),
     dateMEC:ex?.dateMEC||today(),km:String(ex?.km||'0'),puissanceFiscale:String(ex?.puissanceFiscale||''),
-    carburant:ex?.carburant||'Essence',boite:ex?.boite||'Automatique',adblue:ex?.adblue||false,color:ex?.color||C.primary,
+    carburant:ex?.carburant||'Essence',adblue:ex?.adblue||false,color:ex?.color||C.primary,
     assurance:ex?.assurance||{compagnie:'',echeance:'',montant:'',payee:false},
     revision:ex?.revision||{dernierKm:'0',derniereDate:today(),frequence:'10000',garage:''},
     vignette:ex?.vignette||{payee:false,montant:''},
@@ -1572,14 +1214,12 @@ const handleSave=async()=>{
         <View style={{width:36}}/>
       </View>
       <KeyboardAwareScrollView
-        contentContainerStyle={{padding:20,paddingBottom:90}}
+        contentContainerStyle={{padding:20,paddingBottom:120}}
         keyboardShouldPersistTaps="handled"
         enableOnAndroid={true}
         enableAutomaticScroll={true}
-        extraScrollHeight={70}
-        extraHeight={90}
-        keyboardOpeningTime={250}
-        showsVerticalScrollIndicator={false}
+        extraScrollHeight={140}
+        extraHeight={170}
       >
 
         <Text style={styles.section}>Informations générales</Text>
@@ -1592,7 +1232,6 @@ const handleSave=async()=>{
         <Input label="Kilométrage actuel" required value={form.km} onChangeText={v=>set('km',v)} keyboardType="number-pad" placeholder="Ex: 45000"/>
         <Input label="Puissance fiscale (CV)" value={form.puissanceFiscale} onChangeText={v=>set('puissanceFiscale',v.replace(/\D/g,''))} keyboardType="number-pad" placeholder="Ex: 8"/>
         <Dropdown label="Carburant" value={form.carburant} options={CARBURANTS} onSelect={v=>set('carburant',v)}/>
-        <Dropdown label="Boîte de vitesse" value={form.boite} options={BOITES_VITESSE} onSelect={v=>set('boite',v)}/>
         <View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
           <Text style={{fontSize:13,fontWeight:'600',color:C.textMed}}>AdBlue</Text>
           <Switch value={form.adblue} onValueChange={v=>set('adblue',v)} trackColor={{true:C.primary}}/>
@@ -1755,143 +1394,6 @@ const NotificationsScreen=({navigation})=>{
 // ─── DÉPENSES ─────────────────────────────────────────────────────────────────
 const DepensesScreen=()=>{
   const{cars,operations}=useApp();
-  const[period,setPeriod]=useState('all');
-  const[detailCar,setDetailCar]=useState(null);
-
-  const periodLabel={
-    month:'Mois en cours',
-    last3:'3 derniers mois',
-    year:'Année en cours',
-    all:'Toutes périodes'
-  };
-
-  const isInPeriod=(date)=>{
-    if(period==='all')return true;
-    if(!date)return true;
-
-    const d=new Date(date);
-    const now=new Date();
-
-    if(period==='month'){
-      return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth();
-    }
-
-    if(period==='year'){
-      return d.getFullYear()===now.getFullYear();
-    }
-
-    if(period==='last3'){
-      const limit=new Date();
-      limit.setMonth(limit.getMonth()-3);
-      return d>=limit;
-    }
-
-    return true;
-  };
-
-  const getCarExpenseOps=(car)=>{
-    const baseOps=(operations[car.id]||[]);
-
-    const revisionInitiale=car.revision?.dernierKm&&car.revision?.derniereDate?[{
-      id:'rev_init',
-      type:car.revision.type||'Vidange complète (huile + filtres)',
-      date:car.revision.derniereDate,
-      km:car.revision.dernierKm,
-      garage:car.revision.garage||'',
-      montant:Number(car.revision.montant)||0,
-      note:car.revision.note||'Révision initiale'
-    }]:[];
-
-    return [
-      ...baseOps,
-      ...revisionInitiale.filter(r=>!baseOps.some(o=>o.date===r.date&&o.km===r.km))
-    ]
-    .filter(o=>Number(o.montant)>0)
-    .filter(o=>isInPeriod(o.date))
-    .sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
-  };
-
-  useEffect(()=>{
-    if(!detailCar)return;
-    const sub=BackHandler.addEventListener('hardwareBackPress',()=>{
-      setDetailCar(null);
-      return true;
-    });
-    return()=>sub.remove();
-  },[detailCar]);
-
-  if(detailCar){
-    const car=detailCar;
-    const ops=getCarExpenseOps(car);
-    const total=ops.reduce((sum,o)=>sum+(Number(o.montant)||0),0);
-
-    return(
-      <SafeAreaView style={{flex:1,backgroundColor:C.bg,paddingTop:SAFE_TOP,paddingBottom:SAFE_BOTTOM}}>
-        <View style={{backgroundColor:'#fff',padding:16,borderBottomWidth:1,borderBottomColor:C.border,flexDirection:'row',alignItems:'center',gap:12}}>
-          <TouchableOpacity onPress={()=>setDetailCar(null)} style={{width:42,height:42,borderRadius:12,backgroundColor:'#f3f4f6',alignItems:'center',justifyContent:'center'}}>
-            <Text style={{fontSize:22}}>←</Text>
-          </TouchableOpacity>
-          <View style={{flex:1}}>
-            <Text style={{fontSize:22,fontWeight:'900',color:C.text}}>{car.marque} {car.modele}</Text>
-            <Text style={{fontSize:12,color:C.textLight}}>Détail des dépenses · {periodLabel[period]}</Text>
-          </View>
-        </View>
-
-        <ScrollView contentContainerStyle={{padding:16,paddingBottom:110}}>
-        <View style={{flexDirection:'row',flexWrap:'wrap',gap:8,marginBottom:14}}>
-          {[
-            ['month','Mois en cours'],
-            ['last3','3 derniers mois'],
-            ['year','Année en cours'],
-            ['all','Toutes périodes']
-          ].map(([k,label])=>(
-            <TouchableOpacity key={k} onPress={()=>setPeriod(k)} style={{
-              width:'48%',
-              paddingVertical:10,
-              borderRadius:999,
-              alignItems:'center',
-              backgroundColor:period===k?C.primary:C.primaryLight
-            }}>
-              <Text style={{fontSize:12,fontWeight:'900',color:period===k?'#fff':C.primary}}>{label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-          <Card style={{alignItems:'center',padding:22}}>
-            <Text style={{fontSize:13,color:C.textLight}}>Total période</Text>
-            <Text style={{fontSize:34,fontWeight:'900',color:C.primary,marginTop:4}}>{fmtMoney(total)}</Text>
-            <Text style={{fontSize:12,color:C.textLight,marginTop:4}}>{ops.length} opération{ops.length>1?'s':''}</Text>
-          </Card>
-
-          {ops.map(o=>(
-            <Card key={o.id||`${o.date}-${o.km}-${o.type}`}>
-              <View style={{flexDirection:'row',justifyContent:'space-between',gap:12}}>
-                <View style={{flex:1}}>
-                  <Text style={{fontSize:16,fontWeight:'900',color:C.text}}>{o.type||'Dépense'}</Text>
-                  <Text style={{fontSize:13,color:C.textLight,marginTop:5}}>
-                    {fmtDate(o.date)} · {fmtKm(o.km)}
-                  </Text>
-                  {!!o.garage&&<Text style={{fontSize:13,color:C.textLight,marginTop:3}}>{o.garage}</Text>}
-                  {!!o.note&&<Text style={{fontSize:13,color:C.textMed,marginTop:5,fontStyle:'italic'}}>{o.note}</Text>}
-                </View>
-                <Text style={{fontSize:18,fontWeight:'900',color:C.primary}}>{fmtMoney(o.montant)}</Text>
-              </View>
-            </Card>
-          ))}
-
-          {!ops.length&&(
-            <Card style={{alignItems:'center',padding:30}}>
-              <Text style={{fontSize:38}}>💰</Text>
-              <Text style={{fontSize:17,fontWeight:'900',color:C.text,marginTop:8}}>Aucune dépense</Text>
-              <Text style={{fontSize:13,color:C.textLight,textAlign:'center',marginTop:6}}>
-                Aucune opération avec montant pour cette période.
-              </Text>
-            </Card>
-          )}
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
-
   const allOps=Object.values(operations).flat();
   const total=allOps.reduce((s,o)=>s+(Number(o.montant)||0),0);
   return(
@@ -1899,50 +1401,27 @@ const DepensesScreen=()=>{
       <View style={{backgroundColor:'#fff',padding:20,borderBottomWidth:1,borderBottomColor:C.border}}>
         <Text style={{fontSize:20,fontWeight:'800',color:C.text}}>💰 Dépenses</Text>
       </View>
-      <ScrollView contentContainerStyle={{padding:16,paddingBottom:110}}>
+      <ScrollView contentContainerStyle={{padding:16}}>
+        <Card style={{alignItems:'center',padding:24}}>
+          <Text style={{fontSize:13,color:C.textLight}}>Total tous véhicules</Text>
+          <Text style={{fontSize:36,fontWeight:'800',color:C.primary,marginTop:4}}>{fmtMoney(total)}</Text>
+          <Text style={{fontSize:12,color:'#9ca3af',marginTop:4}}>{allOps.length} opérations · {cars.length} véhicule{cars.length>1?'s':''}</Text>
+        </Card>
         {cars.map(car=>{
-          const ops=getCarExpenseOps(car);
-          const t=ops.reduce((s,o)=>s+(Number(o.montant)||0),0);
+          const ops=operations[car.id]||[];const t=ops.reduce((s,o)=>s+(Number(o.montant)||0),0);
           if(!ops.length)return null;
-
-          const byType={};
-          ops.forEach(o=>{
-            const type=o.type||'Autre';
-            byType[type]=(byType[type]||0)+(Number(o.montant)||0);
-          });
-
-          return<TouchableOpacity key={car.id} activeOpacity={0.85} onPress={()=>setDetailCar(car)}><Card>
-            <View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-              <View>
-                <Text style={{fontSize:18,fontWeight:'900',color:C.text}}>{car.marque} {car.modele}</Text>
-                <Text style={{fontSize:12,color:C.textLight,marginTop:3}}>{ops.length} opération{ops.length>1?'s':''}</Text>
-              </View>
-              <Text style={{fontSize:22,fontWeight:'900',color:C.primary}}>{fmtMoney(t)}</Text>
-            </View>
-
-            {Object.entries(byType).sort((a,b)=>b[1]-a[1]).map(([type,montant],i)=>(
-              <View key={type} style={{marginBottom:10}}>
-                <View style={{flexDirection:'row',justifyContent:'space-between',marginBottom:4}}>
-                  <Text style={{fontSize:13,color:C.textLight}}>{type}</Text>
-                  <Text style={{fontSize:13,fontWeight:'800',color:C.text}}>{fmtMoney(montant)}</Text>
-                </View>
-                <View style={{height:5,backgroundColor:'#f3f4f6',borderRadius:3}}>
-                  <View style={{height:'100%',borderRadius:3,width:`${t?Math.round(montant/t*100):0}%`,backgroundColor:[C.primary,'#0e9f6e',C.warning,C.danger][i%4]}}/>
-                </View>
+          const byType={};ops.forEach(o=>{byType[o.type]=(byType[o.type]||0)+(Number(o.montant)||0);});
+          return<Card key={car.id}>
+            <Text style={{fontSize:15,fontWeight:'700',marginBottom:12}}>{car.marque} {car.modele}</Text>
+            <View style={{flexDirection:'row',justifyContent:'space-between',marginBottom:12}}><Text style={{fontSize:13,color:C.textLight}}>Total</Text><Text style={{fontSize:16,fontWeight:'800',color:C.primary}}>{fmtMoney(t)}</Text></View>
+            {Object.entries(byType).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([type,montant],i)=>(
+              <View key={type} style={{marginBottom:8}}>
+                <View style={{flexDirection:'row',justifyContent:'space-between',marginBottom:3}}><Text style={{fontSize:12,color:C.textLight}}>{type}</Text><Text style={{fontSize:12,fontWeight:'600'}}>{fmtMoney(montant)}</Text></View>
+                <View style={{height:4,backgroundColor:'#f3f4f6',borderRadius:2}}><View style={{height:'100%',borderRadius:2,width:`${Math.round(montant/t*100)}%`,backgroundColor:[C.primary,'#0e9f6e',C.warning,C.danger][i%4]}}/></View>
               </View>
             ))}
-          </Card></TouchableOpacity>;
+          </Card>;
         })}
-
-        {cars.every(car=>getCarExpenseOps(car).length===0)&&(
-          <Card style={{alignItems:'center',padding:30}}>
-            <Text style={{fontSize:40}}>💰</Text>
-            <Text style={{fontSize:18,fontWeight:'900',color:C.text,marginTop:8}}>Aucune dépense</Text>
-            <Text style={{fontSize:13,color:C.textLight,textAlign:'center',marginTop:6}}>
-              Les dépenses apparaîtront ici après ajout d’une opération avec montant.
-            </Text>
-          </Card>
-        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -1951,63 +1430,6 @@ const DepensesScreen=()=>{
 // ─── PARAMÈTRES ───────────────────────────────────────────────────────────────
 
 
-
-
-const ExpertSettingsScreen=({onBack})=>{
-  const[count,setCount]=useState(Object.keys(NEW_CAR_PRICE_CACHE).length);
-  const[last,setLast]=useState('');
-  const[loading,setLoading]=useState(false);
-
-  const load=async()=>{
-    await loadPriceReferential();
-    setCount(Object.keys(NEW_CAR_PRICE_CACHE).length);
-    const d=await AsyncStorage.getItem('price_referential_last_update');
-    setLast(d?new Date(Number(d)).toLocaleString('fr-FR'):'Jamais');
-  };
-
-  useEffect(()=>{load();},[]);
-
-  const refresh=async()=>{
-    try{
-      setLoading(true);
-      const n=await refreshPriceReferential();
-      await load();
-      Alert.alert('Référentiel actualisé',`${n} prix du neuf ont été chargés.`);
-    }catch(e){
-      Alert.alert('Erreur',e?.message||'Impossible de rafraîchir le référentiel.');
-    }finally{
-      setLoading(false);
-    }
-  };
-
-  return(
-    <SafeAreaView style={{flex:1,backgroundColor:C.bg,paddingTop:SAFE_TOP,paddingBottom:SAFE_BOTTOM}}>
-      <View style={{backgroundColor:'#fff',padding:16,borderBottomWidth:1,borderBottomColor:C.border,flexDirection:'row',alignItems:'center',gap:12}}>
-        <TouchableOpacity onPress={onBack} style={{width:42,height:42,borderRadius:12,backgroundColor:'#f3f4f6',alignItems:'center',justifyContent:'center'}}>
-          <Text style={{fontSize:22}}>←</Text>
-        </TouchableOpacity>
-        <View style={{flex:1}}>
-          <Text style={{fontSize:22,fontWeight:'900',color:C.text}}>Paramètres expert</Text>
-          <Text style={{fontSize:12,color:C.textLight}}>Référentiel prix du neuf</Text>
-        </View>
-      </View>
-
-      <ScrollView contentContainerStyle={{padding:16,paddingBottom:90}}>
-        <Card>
-          <Text style={{fontSize:18,fontWeight:'900',color:C.text,marginBottom:8}}>🚘 Prix du neuf AutoCarnet</Text>
-          <Text style={{fontSize:13,color:C.textLight,lineHeight:20,marginBottom:14}}>
-            Le client n’a rien à paramétrer. L’application charge automatiquement la base AutoCarnet depuis internet.
-          </Text>
-
-          <InfoRow label="Prix chargés" value={`${count} modèles`}/>
-          <InfoRow label="Dernière actualisation" value={last} last/>
-
-          <Btn label="Rafraîchir les prix du neuf" onPress={refresh} loading={loading} style={{marginTop:14}}/>
-        </Card>
-      </ScrollView>
-    </SafeAreaView>
-  );
-};
 
 const AccountSettingsScreen=({onBack})=>{
   const[name,setName]=useState('');
@@ -2261,7 +1683,7 @@ const SettingsScreen=({navigation})=>{
       <View style={{backgroundColor:'#fff',padding:20,borderBottomWidth:1,borderBottomColor:C.border}}>
         <Text style={{fontSize:28,fontWeight:'900',color:C.text}}>☰ Plus</Text>
         <Text style={{fontSize:13,color:C.textLight,marginTop:4}}>
-          Rapports, sauvegarde, compte et paramètres
+          Rapports, santé constructeur, statistiques et paramètres
         </Text>
       </View>
 
@@ -2274,6 +1696,19 @@ const SettingsScreen=({navigation})=>{
               <Text style={{fontSize:18,fontWeight:'900',color:C.text}}>Rapports PDF</Text>
               <Text style={{fontSize:13,color:C.textLight,marginTop:3}}>
                 Rapport de vente, entretien et export PDF.
+              </Text>
+            </View>
+            <Text style={{fontSize:26,color:C.primary}}>›</Text>
+          </Card>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={()=>Alert.alert('Statistiques','Module statistiques à développer.')}>
+          <Card style={{flexDirection:'row',alignItems:'center',gap:14}}>
+            <Text style={{fontSize:34}}>📊</Text>
+            <View style={{flex:1}}>
+              <Text style={{fontSize:18,fontWeight:'900',color:C.text}}>Statistiques</Text>
+              <Text style={{fontSize:13,color:C.textLight,marginTop:3}}>
+                Dépenses, historique et suivi par véhicule.
               </Text>
             </View>
             <Text style={{fontSize:26,color:C.primary}}>›</Text>
@@ -2306,8 +1741,6 @@ const SettingsScreen=({navigation})=>{
           </Card>
         </TouchableOpacity>
 
-
-
       </ScrollView>
     </SafeAreaView>
   );
@@ -2318,134 +1751,27 @@ const getOpsForCar=(operations,carId)=>operations[carId]||[];
 const totalOps=(ops)=>ops.reduce((sum,o)=>sum+(Number(o.montant)||0),0);
 const recentOps=(ops,limit=5)=>[...ops].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,limit);
 
-const estimateArgus=(car,ops=[],details=null)=>{
-  if(!car)return {rapid:0,juste:0,haut:0,min:0,max:0,label:'Non disponible',score:0,plus:[],moins:[]};
-
+const estimateArgus=(car,ops=[])=>{
+  if(!car)return {min:0,max:0,label:'Non disponible',score:0};
   const year=Number(car.annee)||new Date(car.dateMEC||today()).getFullYear()||new Date().getFullYear();
   const age=Math.max(0,new Date().getFullYear()-year);
   const km=Number(car.km)||0;
   const premium=['Audi','BMW','Mercedes','Land Rover','Volvo'].includes(car.marque);
   const mid=['Volkswagen','Toyota','Hyundai','Kia','Peugeot','Renault','Nissan','Honda','Mazda','Skoda'].includes(car.marque);
-
-  let base=premium?390000:mid?220000:150000;
-
-  const suv=['Q5','X3','GLC','Tiguan','3008','Sportage','Tucson','RAV4','Qashqai','Kuga','CX-5','Kadjar','Duster'];
-  const citadine=['Polo','Clio','208','Sandero','Picanto','i10','Yaris','Fiesta','C3','Ibiza'];
-  if(suv.includes(car.modele))base*=1.24;
-  if(citadine.includes(car.modele))base*=0.66;
-
-  let value=base*Math.pow(0.875,age);
-  const plus=[];
-  const moins=[];
-
-  const mecDate = car.dateMEC ? new Date(car.dateMEC) : new Date(`${year}-01-01`);
-  const todayDate = new Date();
-  const ageMonths = Math.max(
-    1,
-    (todayDate.getFullYear() - mecDate.getFullYear()) * 12 +
-    (todayDate.getMonth() - mecDate.getMonth()) +
-    1
-  );
-
-  const annualKmRef =
-    car.carburant === 'Diesel'
-      ? 27500   // moyenne diesel 25k–30k/an
-      : 17500;  // moyenne essence 15k–20k/an
-
-  const expectedKm = Math.round((annualKmRef / 12) * ageMonths);
-  if(km>expectedKm){
-    const malus=Math.min(0.22,((km-expectedKm)/100000)*0.18);
-    value*=1-malus;
-    moins.push('Kilométrage supérieur à la moyenne');
-  }else if(km<expectedKm*0.75){
-    value*=1.05;
-    plus.push('Kilométrage inférieur à la moyenne');
-  }
-
-  if((car.boite||'').toLowerCase().includes('auto')){
-    value*=1.05;
-    plus.push('Boîte automatique');
-  }
-
-  const version=String(details?.version||car.version||'').toLowerCase();
-  if(version.includes('s-line')||version.includes('amg')||version.includes('m pack')||version.includes('exclusive')||version.includes('full')){
-    value*=1.08;
-    plus.push('Version valorisante');
-  }
-
-  const hasRecentRevision=ops.some(o=>String(o.type||'').toLowerCase().includes('vidange')||String(o.type||'').toLowerCase().includes('révision')||String(o.type||'').toLowerCase().includes('revision'));
-  if(hasRecentRevision){
-    value*=1.03;
-    plus.push('Historique entretien renseigné');
-  }
-
-  if(globalStatus(car)==='urgent'){
-    value*=0.94;
-    moins.push('Échéance urgente à traiter');
-  }
-
-  if(details){
-    const carrosserie=details.carrosserie;
-    const mecanique=details.mecanique;
-    const carnet=details.carnet;
-    const accident=details.accident;
-    const proprietaires=Number(details.proprietaires)||1;
-    const options=details.options;
-    const origine=details.origine;
-
-    if(carrosserie==='Excellent'){value*=1.08;plus.push('Carrosserie excellent état');}
-    if(carrosserie==='Moyen'){value*=0.88;moins.push('Carrosserie moyenne');}
-    if(carrosserie==='À revoir'){value*=0.75;moins.push('Carrosserie à revoir');}
-
-    if(mecanique==='Excellent'){value*=1.10;plus.push('Mécanique excellent état');}
-    if(mecanique==='Moyen'){value*=0.86;moins.push('Mécanique moyenne');}
-    if(mecanique==='À revoir'){value*=0.68;moins.push('Mécanique à revoir');}
-
-    if(carnet==='Complet'){value*=1.05;plus.push('Carnet d’entretien complet');}
-    if(carnet==='Absent'){value*=0.92;moins.push('Carnet d’entretien absent');}
-
-    if(accident==='Oui'){value*=0.78;moins.push('Accident connu déclaré');}
-
-    if(proprietaires>=3){value*=0.94;moins.push('Nombre de propriétaires élevé');}
-    if(proprietaires===1){value*=1.03;plus.push('Première main');}
-
-    if(options==='Full options'){value*=1.07;plus.push('Full options');}
-    if(options==='Bien équipée'){value*=1.04;plus.push('Bien équipée');}
-
-    if(origine==='WW Maroc'){
-      value*=1.03;
-      plus.push('Véhicule WW Maroc');
-    }
-    if(origine==='Importée'){
-      value*=0.96;
-      moins.push('Véhicule importé');
-    }
-  }
-
-  // Plafond anti-surcote : une occasion ne doit pas dépasser un plafond raisonnable du prix neuf estimé
-  const prixNeufEstime=getPrixNeufEstimate(car,details,base);
-  const plafondOccasion=Math.round((prixNeufEstime * 0.92) / 1000) * 1000;
-  if(value>plafondOccasion){
-    value=plafondOccasion;
-    moins.push('Prix plafonné pour éviter une surcote proche du neuf');
-  }
-
-  const juste=Math.max(15000,Math.round(value/1000)*1000);
-  const rapid=Math.round(juste*0.92/1000)*1000;
-  const haut=Math.round(juste*1.08/1000)*1000;
+  let base=premium?380000:mid?210000:145000;
+  if(['Q5','X3','GLC','Tiguan','3008','Sportage','Tucson','RAV4','Qashqai'].includes(car.modele))base*=1.25;
+  if(['Polo','Clio','208','Sandero','Picanto','i10','Yaris'].includes(car.modele))base*=0.65;
+  let value=base*Math.pow(0.88,age);
+  const expectedKm=Math.max(15000,age*18000);
+  if(km>expectedKm)value*=Math.max(0.68,1-((km-expectedKm)/100000)*0.18);
+  if(km<expectedKm*0.75)value*=1.05;
+  const hasRecentRevision=ops.some(o=>String(o.type||'').toLowerCase().includes('vidange')||String(o.type||'').toLowerCase().includes('révision'));
+  if(hasRecentRevision)value*=1.03;
+  if(globalStatus(car)==='urgent')value*=0.94;
+  const min=Math.max(15000,Math.round(value*0.88/1000)*1000);
+  const max=Math.max(min+5000,Math.round(value*1.08/1000)*1000);
   const score=globalStatus(car)==='ok'?85:globalStatus(car)==='warning'?68:52;
-
-  return {
-    rapid,
-    juste,
-    haut,
-    min:rapid,
-    max:haut,
-    label:details?'Argus affiné':'Argus global indicatif',
-    score,
-    plus,
-    moins
-  };
+  return {min,max,label:'Estimation indicative',score};
 };
 
 const KnowledgeCard=({title,items})=>(
@@ -2552,55 +1878,28 @@ const constructeurAdvice=(car,ops=[])=>{
 const AssistantScreen=({navigation,compact=false})=>{
   const{cars,operations}=useApp();
   const[selected,setSelected]=useState(cars[0]?.id||'');
-  const scrollRef=useRef(null);
-  const[showFine,setShowFine]=useState(false);
-  const[argusGenerated,setArgusGenerated]=useState(false);
-  const[appliedDetails,setAppliedDetails]=useState(null);
-  const[details,setDetails]=useState({
-    version:'',
-    carrosserie:'Bon',
-    mecanique:'Bon',
-    carnet:'Partiel',
-    accident:'Non',
-    proprietaires:'1',
-    options:'Standard',
-    origine:'WW Maroc',
-  });
-
   useEffect(()=>{if(!selected&&cars[0])setSelected(cars[0].id);},[cars.length]);
 
   const car=cars.find(c=>c.id===selected)||cars[0];
   const ops=car?getOpsForCar(operations,car.id):[];
-
-  useEffect(()=>{
-    if(car){
-      setDetails(d=>({...d,version:car.version||''}));
-      setShowFine(false);
-      setArgusGenerated(false);
-      setAppliedDetails(null);
-    }
-  },[car?.id]);
-
-  const argus=car?estimateArgus(car,ops,argusGenerated?appliedDetails:null):{rapid:0,juste:0,haut:0,min:0,max:0,plus:[],moins:[]};
+  const argus=car?estimateArgus(car,ops):{min:0,max:0,avg:0};
   const score=car?healthScore(car,ops):0;
   const reco=car?constructeurAdvice(car,ops):[];
-
-  const setD=(k,v)=>setDetails(d=>({...d,[k]:v}));
 
   return(
     <SafeAreaView style={{flex:1,backgroundColor:C.bg,paddingTop:SAFE_TOP,paddingBottom:SAFE_BOTTOM}}>
       <StatusBar barStyle="dark-content" backgroundColor={C.bg}/>
 
       {!compact&&(
-        <View style={{backgroundColor:C.primary,paddingHorizontal:20,paddingTop:12,paddingBottom:16}}>
-          <Text style={{color:'#fff',fontSize:26,fontWeight:'900'}}>📈 Argus</Text>
-          <Text style={{color:'rgba(255,255,255,0.75)',fontSize:13,marginTop:5}}>
-            Estimation indicative globale ou affinée selon l’état réel du véhicule
-          </Text>
-        </View>
+      <View style={{backgroundColor:C.primary,paddingHorizontal:20,paddingTop:20,paddingBottom:24}}>
+        <Text style={{color:'#fff',fontSize:28,fontWeight:'900'}}>📈 Argus</Text>
+        <Text style={{color:'rgba(255,255,255,0.75)',fontSize:13,marginTop:5}}>
+          Estimation indicative, santé constructeur et conseils de vente
+        </Text>
+      </View>
       )}
 
-      <ScrollView ref={scrollRef} contentContainerStyle={{padding:12,paddingBottom:20}} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={{padding:16,paddingBottom:260}} keyboardShouldPersistTaps="handled">
         {cars.length>0&&(
           <Dropdown
             label="Véhicule"
@@ -2623,109 +1922,31 @@ const AssistantScreen=({navigation,compact=false})=>{
             <Card>
               <View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'flex-start',gap:12}}>
                 <View style={{flex:1}}>
-                  <Text style={{fontSize:20,fontWeight:'900',color:C.text}}>{car.marque} {car.modele}</Text>
-                  <Text style={{fontSize:13,color:C.textLight,marginTop:4}}>
-                    {car.annee||''} · {fmtKm(car.km)} · {car.carburant||''} · {car.boite||'Boîte non renseignée'}
-                  </Text>
-                  {car.version?<Text style={{fontSize:12,color:C.textLight,marginTop:3}}>Version : {car.version}</Text>:null}
+                  <Text style={{fontSize:22,fontWeight:'900',color:C.text}}>{car.marque} {car.modele}</Text>
+                  <Text style={{fontSize:13,color:C.textLight,marginTop:4}}>{car.annee||''} · {fmtKm(car.km)} · {car.carburant||''}</Text>
                 </View>
 
-                <View style={{backgroundColor:'#ecfdf5',borderRadius:14,paddingHorizontal:12,paddingVertical:8,alignItems:'center'}}>
-                  <Text style={{fontSize:22,fontWeight:'900',color:'#16a34a'}}>{score}</Text>
+                <View style={{backgroundColor:'#ecfdf5',borderRadius:16,paddingHorizontal:14,paddingVertical:10,alignItems:'center'}}>
+                  <Text style={{fontSize:24,fontWeight:'900',color:'#16a34a'}}>{score}</Text>
                   <Text style={{fontSize:11,fontWeight:'800',color:'#16a34a'}}>{healthLabel(score)}</Text>
                 </View>
               </View>
 
-              <View style={{marginTop:12,backgroundColor:'#eff6ff',borderRadius:16,padding:14}}>
-                <View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
-                  <Text style={{fontSize:12,fontWeight:'900',color:C.primary}}>{argus.label.toUpperCase()}</Text>
-                  <View style={{
-                    backgroundColor:
-                      argus.marketLabel==='Bonne affaire'?'#dcfce7':
-                      argus.marketLabel==='Prix élevé'?'#fee2e2':'#e0f2fe',
-                    paddingHorizontal:10,
-                    paddingVertical:5,
-                    borderRadius:999
-                  }}>
-                    <Text style={{
-                      fontSize:10,
-                      fontWeight:'900',
-                      color:
-                        argus.marketLabel==='Bonne affaire'?'#15803d':
-                        argus.marketLabel==='Prix élevé'?'#b91c1c':'#0369a1'
-                    }}>{argus.marketLabel}</Text>
-                  </View>
-                </View>
-
-                <View style={{backgroundColor:'#fff',borderRadius:16,padding:14,marginBottom:10}}>
-                  <Text style={{fontSize:12,fontWeight:'800',color:C.textLight}}>Prix juste conseillé</Text>
-                  <Text style={{fontSize:34,fontWeight:'900',color:C.primary,marginTop:2}}>{fmtMoney(argus.juste)}</Text>
-                </View>
-
-                <View style={{flexDirection:'row',gap:10}}>
-                  <View style={{flex:1,backgroundColor:'#fff',borderRadius:14,padding:12}}>
-                    <Text style={{fontSize:11,fontWeight:'800',color:C.textLight}}>Vente rapide</Text>
-                    <Text style={{fontSize:18,fontWeight:'900',color:'#08244a',marginTop:4}}>{fmtMoney(argus.rapid)}</Text>
-                  </View>
-                  <View style={{flex:1,backgroundColor:'#fff',borderRadius:14,padding:12}}>
-                    <Text style={{fontSize:11,fontWeight:'800',color:C.textLight}}>Prix haut</Text>
-                    <Text style={{fontSize:18,fontWeight:'900',color:'#08244a',marginTop:4}}>{fmtMoney(argus.haut)}</Text>
-                  </View>
-                </View>
-
-                <Text style={{fontSize:11,color:C.textLight,marginTop:10,lineHeight:16}}>
-                  Estimation indicative non officielle basée sur les données saisies.
+              <View style={{marginTop:18,backgroundColor:'#eff6ff',borderRadius:18,padding:18}}>
+                <Text style={{fontSize:12,fontWeight:'900',color:C.primary}}>ESTIMATION INDICATIVE</Text>
+                <Text style={{fontSize:28,fontWeight:'900',color:'#08244a',marginTop:8}}>
+                  {fmtMoney(argus.min)} - {fmtMoney(argus.max)}
+                </Text>
+                <Text style={{fontSize:12,color:C.textLight,marginTop:6}}>
+                  Estimation non officielle basée sur les informations saisies dans AutoCarnet.
                 </Text>
               </View>
-
-              <TouchableOpacity onPress={()=>setShowFine(v=>!v)} style={{marginTop:14,backgroundColor:showFine?C.dangerLight:C.primary,borderRadius:14,padding:11,alignItems:'center'}}>
-                <Text style={{fontSize:14,fontWeight:'900',color:showFine?C.danger:'#fff'}}>
-                  {showFine?'Masquer les critères':argusGenerated?'Modifier les critères':'Affiner l’Argus'}
-                </Text>
-              </TouchableOpacity>
-            </Card>
-
-            {showFine&&(
-              <Card>
-                <Text style={{fontSize:18,fontWeight:'900',color:C.text,marginBottom:12}}>🎯 Informations pour Argus affiné</Text>
-                <Input label="Version / finition" value={details.version} onChangeText={v=>setD('version',v)} placeholder="Ex: S-Line, Pack M, Full options..."/>
-                <Dropdown label="État carrosserie" value={details.carrosserie} options={['Excellent','Bon','Moyen','À revoir']} onSelect={v=>setD('carrosserie',v)}/>
-                <Dropdown label="État mécanique" value={details.mecanique} options={['Excellent','Bon','Moyen','À revoir']} onSelect={v=>setD('mecanique',v)}/>
-                <Dropdown label="Carnet d’entretien" value={details.carnet} options={['Complet','Partiel','Absent']} onSelect={v=>setD('carnet',v)}/>
-                <Dropdown label="Accident connu" value={details.accident} options={['Non','Oui']} onSelect={v=>setD('accident',v)}/>
-                <Dropdown label="Niveau d’options" value={details.options} options={['Standard','Bien équipée','Full options']} onSelect={v=>setD('options',v)}/>
-                <Dropdown label="Origine véhicule" value={details.origine} options={['WW Maroc','Importée']} onSelect={v=>setD('origine',v)}/>
-                <Input label="Nombre de propriétaires" value={details.proprietaires} onChangeText={v=>setD('proprietaires',v.replace(/\D/g,'').slice(0,2))} keyboardType="number-pad"/>
-
-                <Text style={{fontSize:12,color:C.textLight,lineHeight:18,marginBottom:10}}>
-                  Les changements ne sont appliqués qu’après avoir cliqué sur “Générer l’Argus affiné”.
-                </Text>
-                <Btn label="Générer l’Argus affiné" onPress={()=>{setAppliedDetails({...details});setArgusGenerated(true);setShowFine(false);setTimeout(()=>scrollRef.current?.scrollTo({y:0,animated:true}),100);}} style={{marginTop:8}}/>
-              </Card>
-            )}
-
-            <Card>
-              <Text style={{fontSize:18,fontWeight:'900',color:C.text,marginBottom:12}}>📌 Lecture de l’estimation</Text>
-              {argus.plus.length>0&&<>
-                <Text style={{fontSize:14,fontWeight:'900',color:C.success,marginBottom:8}}>Points qui valorisent</Text>
-                {argus.plus.map((x,i)=><Text key={'p'+i} style={{fontSize:13,color:C.textMed,lineHeight:20}}>• {x}</Text>)}
-              </>}
-              {argus.moins.length>0&&<>
-                <Text style={{fontSize:14,fontWeight:'900',color:C.danger,marginTop:12,marginBottom:8}}>Points qui baissent le prix</Text>
-                {argus.moins.map((x,i)=><Text key={'m'+i} style={{fontSize:13,color:C.textMed,lineHeight:20}}>• {x}</Text>)}
-              </>}
-              {argus.plus.length===0&&argus.moins.length===0&&(
-                <Text style={{fontSize:13,color:C.textLight}}>Aucun facteur particulier détecté. Ajoutez des informations dans l’Argus affiné pour une estimation plus précise.</Text>
-              )}
             </Card>
 
             <Card>
               <Text style={{fontSize:18,fontWeight:'900',color:C.text,marginBottom:12}}>📌 Critères utilisés</Text>
               <InfoRow label="Véhicule" value={`${car.marque} ${car.modele} ${car.annee||''}`}/>
-              <InfoRow label="Version" value={showFine?(details.version||'—'):(car.version||'—')}/>
               <InfoRow label="Kilométrage" value={fmtKm(car.km)}/>
-              <InfoRow label="Boîte" value={car.boite||'—'}/>
-              <InfoRow label="Origine" value={(showFine||argusGenerated)?details.origine:'—'}/>
               <InfoRow label="Historique" value={`${ops.length} opération(s) enregistrée(s)`}/>
               <InfoRow label="Révision" value={SL[revStatus(car)]}/>
               <InfoRow label="Assurance" value={SL[assStatus(car)]} last/>
@@ -2733,8 +1954,8 @@ const AssistantScreen=({navigation,compact=false})=>{
 
             <Card>
               <Text style={{fontSize:18,fontWeight:'900',color:C.text,marginBottom:12}}>🏭 Santé constructeur & entretien recommandé</Text>
-              {reco.slice(0,4).map((r,i)=>(
-                <View key={i} style={{backgroundColor:'#f8fafc',borderWidth:1,borderColor:'#e5e7eb',borderRadius:14,padding:11,marginBottom:i===reco.length-1?0:8}}>
+              {reco.map((r,i)=>(
+                <View key={i} style={{backgroundColor:'#f8fafc',borderWidth:1,borderColor:'#e5e7eb',borderRadius:14,padding:14,marginBottom:i===reco.length-1?0:10}}>
                   <View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center',gap:10}}>
                     <Text style={{flex:1,fontSize:14,fontWeight:'900',color:C.text}}>{r.title}</Text>
                     <Text style={{
@@ -2757,11 +1978,11 @@ const AssistantScreen=({navigation,compact=false})=>{
             <Card>
               <Text style={{fontSize:18,fontWeight:'900',color:C.text,marginBottom:12}}>💡 Conseils vente</Text>
               <Text style={{fontSize:13,color:C.textMed,lineHeight:22}}>
-                • Afficher légèrement au-dessus du prix juste pour garder une marge de négociation{"\n"}
-                • Utiliser le prix vente rapide si vous voulez conclure vite{"\n"}
-                • Mettre en avant les entretiens récents et les échéances à jour{"\n"}
+                • Mettre en avant les entretiens récents{"\n"}
+                • Mentionner les échéances à jour : assurance, vignette, VT{"\n"}
                 • Préparer un rapport PDF de vente depuis le menu Plus{"\n"}
-                • Mentionner clairement les défauts pour éviter les négociations agressives
+                • Garder un prix cible et un prix minimum de négociation{"\n"}
+                • Présenter un véhicule propre avec photos claires
               </Text>
             </Card>
           </>
@@ -3037,34 +2258,8 @@ const styles=StyleSheet.create({
 });
 const Stack=createStackNavigator();
 const Tab=createBottomTabNavigator();
-
-const QuickAddOperationScreen=({navigation})=>{
-  const{cars}=useApp();
-
-  useEffect(()=>{
-    if(!cars.length){
-      Alert.alert('Aucun véhicule','Ajoutez d’abord un véhicule avant de saisir une opération.');
-      navigation.navigate('Vehicules');
-      return;
-    }
-
-    if(cars.length===1){
-      navigation.navigate('AddOp',{carId:cars[0].id});
-      return;
-    }
-
-    Alert.alert(
-      'Choisir un véhicule',
-      'Ouvrez la fiche du véhicule concerné puis ajoutez l’opération.'
-    );
-    navigation.navigate('Vehicules');
-  },[]);
-
-  return null;
-};
-
 const MainTabs=()=>(
-  <Tab.Navigator screenOptions={{headerShown:false,tabBarStyle:{paddingBottom:30,paddingTop:8,height:92,backgroundColor:'#fff',borderTopWidth:1,borderTopColor:'#f3f4f6'},tabBarActiveTintColor:C.primary,tabBarInactiveTintColor:C.textLight,tabBarLabelStyle:{fontSize:10,fontWeight:'700',marginTop:-4,marginBottom:14}}}>
+  <Tab.Navigator screenOptions={{headerShown:false,tabBarStyle:{paddingBottom:42,paddingTop:3,height:96,backgroundColor:'#fff',borderTopWidth:1,borderTopColor:'#f3f4f6',paddingBottom:42,paddingTop:3,height:96},tabBarActiveTintColor:C.primary,tabBarInactiveTintColor:C.textLight,tabBarLabelStyle:{fontSize:11,fontWeight:'600'}}}>
     <Tab.Screen name="Dashboard" component={DashboardScreen} options={{tabBarLabel:'Véhicules',tabBarIcon:({focused})=><Text style={{fontSize:focused?22:20,opacity:focused?1:0.6}}>🚗</Text>}}/>
     <Tab.Screen name="Notifications" component={NotificationsScreen} options={{tabBarLabel:'Alertes',tabBarIcon:({focused})=><Text style={{fontSize:focused?22:20,opacity:focused?1:0.6}}>🔔</Text>}}/>
     <Tab.Screen name="Depenses" component={DepensesScreen} options={{tabBarLabel:'Dépenses',tabBarIcon:({focused})=><Text style={{fontSize:focused?22:20,opacity:focused?1:0.6}}>💰</Text>}}/>

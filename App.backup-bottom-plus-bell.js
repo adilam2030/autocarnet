@@ -3037,32 +3037,6 @@ const styles=StyleSheet.create({
 });
 const Stack=createStackNavigator();
 const Tab=createBottomTabNavigator();
-
-const QuickAddOperationScreen=({navigation})=>{
-  const{cars}=useApp();
-
-  useEffect(()=>{
-    if(!cars.length){
-      Alert.alert('Aucun véhicule','Ajoutez d’abord un véhicule avant de saisir une opération.');
-      navigation.navigate('Vehicules');
-      return;
-    }
-
-    if(cars.length===1){
-      navigation.navigate('AddOp',{carId:cars[0].id});
-      return;
-    }
-
-    Alert.alert(
-      'Choisir un véhicule',
-      'Ouvrez la fiche du véhicule concerné puis ajoutez l’opération.'
-    );
-    navigation.navigate('Vehicules');
-  },[]);
-
-  return null;
-};
-
 const MainTabs=()=>(
   <Tab.Navigator screenOptions={{headerShown:false,tabBarStyle:{paddingBottom:30,paddingTop:8,height:92,backgroundColor:'#fff',borderTopWidth:1,borderTopColor:'#f3f4f6'},tabBarActiveTintColor:C.primary,tabBarInactiveTintColor:C.textLight,tabBarLabelStyle:{fontSize:10,fontWeight:'700',marginTop:-4,marginBottom:14}}}>
     <Tab.Screen name="Dashboard" component={DashboardScreen} options={{tabBarLabel:'Véhicules',tabBarIcon:({focused})=><Text style={{fontSize:focused?22:20,opacity:focused?1:0.6}}>🚗</Text>}}/>
