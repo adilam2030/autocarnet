@@ -20,7 +20,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.autocarnet.app",
-      "versionCode": 6,
+      "versionCode": 7,
       "googleServicesFile": "./google-services.json",
       "softwareKeyboardLayoutMode": "resize"
     },
