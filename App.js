@@ -72,7 +72,7 @@ const BOITES_VITESSE=['Automatique','Manuelle'];
 const OP_TYPES=['Vidange complète (huile + filtres)','Vidange simple (huile seule)','Courroie de distribution','Batterie','Pneus','Freins','Climatisation','Amortisseurs','Bougies','Boîte automatique','AdBlue','Liquide de frein','Liquide refroidissement','Visite technique','Assurance','Vignette','Autre'];
 const COULEURS_CAR=[{label:'Blanc',value:'#ffffff'},{label:'Gris clair',value:'#d1d5db'},{label:'Gris foncé',value:'#4b5563'},{label:'Noir',value:'#111827'},{label:'Bleu clair',value:'#60a5fa'},{label:'Bleu foncé',value:'#1d4ed8'},{label:'Rouge',value:'#ef4444'},{label:'Vert',value:'#10b981'},{label:'Violet',value:'#8b5cf6'},{label:'Jaune',value:'#facc15'}];
 const ASSURANCES_MA=['Allianz Maroc','Atlanta Assurance','AXA Assurance Maroc','MAMDA','MCMA','RMA Watanya','Saham Assurance','Sanad','SNTL','Wafa Assurance','Zurich Assurance','Autre'];
-const GARAGES=['Concessionnaire','Mécanicien','FastPro','Midas','Speedy','Station de service','Autre'];
+const GARAGES=['Concessionnaire','Centre automobile','FastPro','Midas','Speedy','Station de service','Autre'];
 const FREQUENCES_KM=['5000','7500','10000','15000','20000'];
 const MOIS=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 const PERIODES=['Mois en cours','3 derniers mois','Année en cours','Tout'];
@@ -1482,7 +1482,7 @@ const CarDetailScreen=({route,navigation})=>{
             <InfoRow label="1ère MEC" value={fmtDate(car.dateMEC)}/>
             <InfoRow label="Carburant" value={car.carburant}/>
             <InfoRow label="Boîte" value={car.boite||'—'}/>
-              <InfoRow label="Origine" value={(showFine||argusGenerated)?details.origine:'—'}/>
+              <InfoRow label="Origine" value={car.origine || '—'}/>
             <InfoRow label="Puissance fiscale" value={car.puissanceFiscale?`${car.puissanceFiscale} CV`:'—'}/>
             <InfoRow label="AdBlue" value={car.adblue?'Oui':'Non'} last/>
           </Card>
@@ -2725,7 +2725,7 @@ const AssistantScreen=({navigation,compact=false})=>{
               <InfoRow label="Version" value={showFine?(details.version||'—'):(car.version||'—')}/>
               <InfoRow label="Kilométrage" value={fmtKm(car.km)}/>
               <InfoRow label="Boîte" value={car.boite||'—'}/>
-              <InfoRow label="Origine" value={(showFine||argusGenerated)?details.origine:'—'}/>
+              <InfoRow label="Origine" value={car.origine || '—'}/>
               <InfoRow label="Historique" value={`${ops.length} opération(s) enregistrée(s)`}/>
               <InfoRow label="Révision" value={SL[revStatus(car)]}/>
               <InfoRow label="Assurance" value={SL[assStatus(car)]} last/>
